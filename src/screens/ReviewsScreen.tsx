@@ -42,7 +42,7 @@ export const ReviewsScreen: React.FC<ReviewsScreenProps> = ({
           <button
             type="button"
             onClick={onBack}
-            aria-label="Back to More"
+            aria-label="Back"
             className="w-11 h-11 rounded-full flex items-center justify-center text-[#0F2A3F] hover:bg-[#F3F5FA] pressable cursor-pointer shrink-0"
           >
             <ArrowLeft className="w-5 h-5 stroke-[2]" />

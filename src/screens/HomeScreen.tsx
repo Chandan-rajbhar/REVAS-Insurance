@@ -7,6 +7,7 @@ import {
   HelpCircle,
   Phone,
   ShieldCheck,
+  Star,
   Truck,
 } from 'lucide-react';
 import {
@@ -15,6 +16,7 @@ import {
   HOME_CONTENT,
   HOME_IMAGES,
   POLICIES,
+  REVIEWS_SUMMARY,
   type PolicyItem,
   type ScreenId,
   type TabId,
@@ -61,46 +63,48 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       ref={scrollContainerRef}
       className="flex-1 min-h-0 scroll-area bg-[#F6F8FC] pb-6"
     >
-      {/* 1. Hero Company Card (starts cleanly below fixed navbar, 0 gap) */}
-      <section
-        className="relative w-full rounded-none overflow-hidden bg-[#0F2A3F] text-white flex flex-col justify-end p-[18px]"
-        style={{ height: 'clamp(210px, 28dvh, 260px)' }}
-      >
-        <ResponsivePhoto
-          asset={HOME_IMAGES.heroTruck}
-          lazy={false}
-          priority
-          fallbackSolid
-          className="absolute inset-0 w-full h-full rounded-none"
-          imgClassName="object-cover"
-          style={{ objectPosition: 'center 25%', transform: 'none' }}
-        />
+      {/* 1. Hero Company Card */}
+      <div className="pt-4 px-4 pb-0">
+        <section
+          className="relative w-full rounded-[24px] overflow-hidden bg-[#0F2A3F] text-white flex flex-col justify-end p-[18px] shadow-[0_8px_24px_rgba(15,42,63,0.18)]"
+          style={{ height: 'clamp(210px, 28dvh, 260px)' }}
+        >
+          <ResponsivePhoto
+            asset={HOME_IMAGES.heroTruck}
+            lazy={false}
+            priority
+            fallbackSolid
+            className="absolute inset-0 w-full h-full"
+            imgClassName="object-cover"
+            style={{ objectPosition: '50% 35%', transform: 'none' }}
+          />
 
-        {/* Gradient on bottom 120px only so upper sunrise and truck stay uncovered */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-[120px]"
-          style={{
-            background:
-              'linear-gradient(to top, rgba(15, 42, 63, 0.96) 0%, rgba(15, 42, 63, 0.7) 55%, rgba(15, 42, 63, 0) 100%)',
-          }}
-        />
+          {/* Gradient on bottom 120px only so upper sunrise and truck stay uncovered */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-[120px]"
+            style={{
+              background:
+                'linear-gradient(to top, rgba(15, 42, 63, 0.96) 0%, rgba(15, 42, 63, 0.7) 55%, rgba(15, 42, 63, 0) 100%)',
+            }}
+          />
 
-        <div className="relative z-10">
-          <p className="text-[14px] font-normal text-[#99F6E4] leading-[1.35]">
-            {HOME_CONTENT.greeting}
-          </p>
-          <h1 className="mt-1 text-[26px] font-medium text-white leading-[1.2] tracking-[-0.015em]">
-            {COMPANY.name}
-          </h1>
-          <p className="mt-[14px] flex items-center gap-2 text-[14px] font-normal text-[#BFDBFE] leading-[1.35]">
-            <span aria-hidden="true" className="w-2 h-2 rounded-full bg-[#34D399] shrink-0" />
-            <span>
-              {COMPANY.status} · {COMPANY.powerUnits} trucks · {COMPANY.driversCount} drivers
-            </span>
-          </p>
-        </div>
-      </section>
+          <div className="relative z-10">
+            <p className="text-[14px] font-normal text-[#99F6E4] leading-[1.35]">
+              {HOME_CONTENT.greeting}
+            </p>
+            <h1 className="mt-1 text-[26px] font-medium text-white leading-[1.2] tracking-[-0.015em]">
+              {COMPANY.name}
+            </h1>
+            <p className="mt-[14px] flex items-center gap-2 text-[14px] font-normal text-[#BFDBFE] leading-[1.35]">
+              <span aria-hidden="true" className="w-2 h-2 rounded-full bg-[#34D399] shrink-0" />
+              <span>
+                {COMPANY.status} · {COMPANY.powerUnits} trucks · {COMPANY.driversCount} drivers
+              </span>
+            </p>
+          </div>
+        </section>
+      </div>
 
       {/* 2. Needs-Attention Alert (16px below hero, no overlap) */}
       <div
@@ -362,6 +366,65 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <span>Help &amp; support</span>
           </button>
         </div>
+      </div>
+
+      {/* 8. Social Proof / Reviews Card */}
+      <div
+        className="px-4 mt-4 fade-up"
+        style={{ animationDelay: '420ms' }}
+      >
+        <button
+          type="button"
+          onClick={() => onNavigate('reviews')}
+          aria-label={`${REVIEWS_SUMMARY.trustedText} — ${REVIEWS_SUMMARY.rating} rating. Open reviews`}
+          className="w-full rounded-2xl bg-white/90 hover:bg-white px-4 py-3 shadow-[0_4px_16px_rgba(15,42,63,0.05)] flex items-center justify-between gap-3 text-left pressable cursor-pointer transition-colors"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="relative w-[68px] h-7 shrink-0" aria-hidden="true">
+              <ResponsivePhoto
+                asset={HOME_IMAGES.driver}
+                lazy
+                className="w-7 h-7 rounded-full ring-2 ring-white !absolute top-0 left-0"
+                imgClassName="object-cover"
+                style={{
+                  objectPosition: '50% 35%',
+                  transform: 'scale(1.45)',
+                  transformOrigin: '50% 35%',
+                }}
+              />
+              <ResponsivePhoto
+                asset={HOME_IMAGES.driver}
+                lazy
+                className="w-7 h-7 rounded-full ring-2 ring-white !absolute top-0 left-5"
+                imgClassName="object-cover"
+                style={{
+                  objectPosition: '48% 36%',
+                  transform: 'scale(1.25)',
+                  transformOrigin: '48% 36%',
+                }}
+              />
+              <ResponsivePhoto
+                asset={HOME_IMAGES.driver}
+                lazy
+                className="w-7 h-7 rounded-full ring-2 ring-white !absolute top-0 left-10"
+                imgClassName="object-cover"
+                style={{
+                  objectPosition: '52% 33%',
+                  transform: 'scale(1.6)',
+                  transformOrigin: '52% 33%',
+                }}
+              />
+            </div>
+            <span className="text-[13px] font-medium text-[#334155] truncate">
+              {REVIEWS_SUMMARY.trustedText}
+            </span>
+          </div>
+
+          <div className="inline-flex items-center gap-1 text-[14px] font-bold text-[#0F172A] shrink-0">
+            <Star className="w-4 h-4 text-[#0B6B5A] fill-[#14B8A6]" />
+            <span>{REVIEWS_SUMMARY.rating}</span>
+          </div>
+        </button>
       </div>
     </div>
   );

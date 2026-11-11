@@ -587,7 +587,7 @@ export function App() {
             {screen === 'reviews' && (
               <ReviewsScreen
                 reviews={reviews}
-                onBack={() => navigateScreen('more')}
+                onBack={() => navigateScreen(activeTab)}
                 onWriteReview={() => setActiveSheet({ type: 'write-review' })}
               />
             )}
