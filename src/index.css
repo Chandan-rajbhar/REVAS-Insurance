@@ -1,0 +1,281 @@
+@import "tailwindcss";
+
+@custom-variant desk (@media (min-width: 1024px) and (min-height: 700px) and (hover: hover) and (pointer: fine));
+
+@theme {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-navy-950: #081320;
+  --color-navy-900: #0b1726;
+  --color-navy-800: #0f2a3f;
+  --color-brand-teal: #0b6b5a;
+  --color-brand-teal-tint: #d9f2ea;
+  --color-alert-red: #b91c1c;
+  --color-alert-red-tint: #fee2e2;
+  --color-surface-bg: #f6f8fc;
+  --color-surface-panel: #eef3fb;
+  --color-border-subtle: #e5e9f0;
+}
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background-color: #f6f8fc;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  :where(button, a, input, select, textarea, [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid #0b6b5a;
+    outline-offset: 2px;
+  }
+}
+
+/* Hide scrollbars while preserving smooth native touch scrolling */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-area {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scroll-area::-webkit-scrollbar {
+  display: none;
+}
+
+/* Subtle screen transition */
+@keyframes screenFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.screen-enter {
+  animation: screenFadeIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes sheetSlideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.sheet-enter {
+  animation: sheetSlideUp 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes toastSlideDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.toast-enter {
+  animation: toastSlideDown 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeUpIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-up {
+  animation: fadeUpIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes progressGrow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.progress-grow {
+  transform-origin: left center;
+  animation: progressGrow 450ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.pressable {
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms ease;
+}
+
+.pressable:active {
+  transform: scale(0.97);
+}
+
+/* ============================================================================
+   RESPONSIVE STAGE & APP CONTAINER
+   Default (Phones <= 480px & Landscape Phones): 100% full-screen, 100dvh, no frame
+   ============================================================================ */
+.phone-viewport-stage {
+  width: 100%;
+  height: 100dvh;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  overflow: hidden;
+  background-color: #f6f8fc;
+}
+
+.phone-frame {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  background-color: #f6f8fc;
+  overflow: hidden;
+  transform: translateZ(0);
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
+}
+
+/* Tablets (481px to 1023px, or non-desktop touch tablets) in portrait/tall viewports:
+   Keep full height, center a single column max-width 480px on #f6f8fc, NO frame/bezel/shadow */
+@media (min-width: 481px) and (min-height: 500px) {
+  .phone-frame {
+    max-width: 480px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* Landscape phones (height < 500px): compact chrome slightly so content has breathing room */
+@media (max-height: 499px) {
+  .compact-header-inner {
+    height: 46px !important;
+  }
+  .compact-nav {
+    padding-top: 4px !important;
+    padding-bottom: max(4px, env(safe-area-inset-bottom)) !important;
+  }
+}
+
+/* Large desktop screens ONLY: centered 390x844 phone frame with bezel & soft backdrop */
+@media (min-width: 1024px) and (min-height: 700px) and (hover: hover) and (pointer: fine) {
+  body {
+    background: radial-gradient(circle at 20% 20%, #eef2f7 0%, #dbe3ee 48%, #cbd5e1 100%);
+  }
+
+  .phone-viewport-stage {
+    align-items: center;
+    background: transparent;
+  }
+
+  .phone-frame {
+    width: 390px;
+    max-width: 390px;
+    height: min(844px, calc(100dvh - 48px));
+    margin: 0;
+    border-radius: 44px;
+    border: 10px solid #111111;
+    box-shadow:
+      0 28px 70px -15px rgba(15, 23, 42, 0.35),
+      0 12px 28px -8px rgba(15, 23, 42, 0.2),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    box-sizing: border-box;
+    transform: translateZ(0);
+  }
+}
+
+/* Short laptop desktop screens (700px–759px tall): keep exact 390:844 aspect ratio via CSS scale */
+@media (min-width: 1024px) and (min-height: 700px) and (max-height: 759px) and (hover: hover) and (pointer: fine) {
+  .phone-frame {
+    height: 844px;
+    transform-origin: center center;
+    transform: translateZ(0) scale(0.75);
+  }
+}
+
+/* Safe area helpers */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.safe-bottom-padded {
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+}
+
+/* Under 340px container width: stack paired action buttons full-width */
+@container (max-width: 339px) {
+  .btn-row-responsive {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .btn-row-responsive > * {
+    width: 100% !important;
+    flex: none !important;
+  }
+}
+
+/* Respect reduced motion accessibility preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .pressable:active {
+    transform: none !important;
+  }
+}
