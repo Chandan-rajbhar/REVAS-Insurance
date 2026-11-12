@@ -7,6 +7,7 @@ interface PhoneFrameProps {
   toast: ToastData | null;
   onDismissToast: () => void;
   overlays?: React.ReactNode;
+  reduceMotion?: boolean;
 }
 
 export const PhoneFrame: React.FC<PhoneFrameProps> = ({
@@ -14,9 +15,10 @@ export const PhoneFrame: React.FC<PhoneFrameProps> = ({
   toast,
   onDismissToast,
   overlays,
+  reduceMotion = false,
 }) => {
   return (
-    <div className="phone-viewport-stage">
+    <div className={`phone-viewport-stage ${reduceMotion ? 'reduce-motion' : ''}`}>
       <div className="phone-frame">
         {/* Simulated status bar: ONLY rendered on large desktop screens where the phone frame is active */}
         <div className="hidden desk:flex shrink-0 h-[30px] bg-white px-6 items-center justify-between select-none relative z-20">

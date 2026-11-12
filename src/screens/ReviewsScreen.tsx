@@ -1,9 +1,13 @@
 import React from 'react';
 import { ArrowLeft, Pencil, Star } from 'lucide-react';
 import { REVIEWS_SUMMARY, type CarrierReview } from '../data/mock';
+import { useScrollPersistence } from '../hooks';
+import { formatRelativeTime } from '../lib/dates';
 
 interface ReviewsScreenProps {
   reviews: CarrierReview[];
+  ratingText: string;
+  reviewCount: number;
   onBack: () => void;
   onWriteReview: () => void;
 }
@@ -31,9 +35,14 @@ const StarRow: React.FC<{ count: number; sizeClass?: string }> = ({
 
 export const ReviewsScreen: React.FC<ReviewsScreenProps> = ({
   reviews,
+  ratingText,
+  reviewCount,
   onBack,
   onWriteReview,
 }) => {
+  const { scrollRef, onScroll } = useScrollPersistence('reviews');
+  const numericRating = Math.round(Number.parseFloat(ratingText) || 5);
+
   return (
     <div className="flex flex-col flex-1 min-h-0 w-full min-w-0 bg-[#F6F8FC]">
       {/* Header */}
@@ -54,7 +63,11 @@ export const ReviewsScreen: React.FC<ReviewsScreenProps> = ({
       </header>
 
       {/* Scrollable Content */}
-      <div className="flex-1 min-h-0 scroll-area px-4 pt-3 pb-6">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="flex-1 min-h-0 scroll-area px-4 pt-3 pb-6"
+      >
         {/* Summary Card */}
         <section
           className="bg-white rounded-[16px] p-4"
@@ -62,15 +75,15 @@ export const ReviewsScreen: React.FC<ReviewsScreenProps> = ({
         >
           <div className="flex items-center gap-3">
             <span className="text-[36px] font-medium text-[#0F2A3F] leading-none tracking-[-0.02em]">
-              {REVIEWS_SUMMARY.rating}
+              {ratingText}
             </span>
-            <StarRow count={5} sizeClass="w-[18px] h-[18px]" />
+            <StarRow count={numericRating} sizeClass="w-[18px] h-[18px]" />
           </div>
           <p className="mt-2.5 text-[15px] font-medium text-[#0F2A3F] leading-[1.35]">
             {REVIEWS_SUMMARY.trustedText}
           </p>
           <p className="mt-0.5 text-[13px] text-[#64748B] leading-[1.35]">
-            {REVIEWS_SUMMARY.basedOnText}
+            Based on {reviewCount} verified review{reviewCount === 1 ? '' : 's'}
           </p>
         </section>
 
@@ -101,7 +114,7 @@ export const ReviewsScreen: React.FC<ReviewsScreenProps> = ({
                     </div>
                   </div>
                   <span className="text-[12px] text-[#64748B] whitespace-nowrap shrink-0 pt-0.5">
-                    {review.timeAgo}
+                    {formatRelativeTime(review.createdAt)}
                   </span>
                 </div>
 

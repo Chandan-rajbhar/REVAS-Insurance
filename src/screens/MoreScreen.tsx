@@ -13,7 +13,12 @@ import {
   Truck,
   User,
 } from 'lucide-react';
-import { COMPANY, HOME_IMAGES, POLICIES, type InProgressFiling } from '../data/mock';
+import {
+  HOME_IMAGES,
+  type CompanyInfo,
+  type QuoteDraft,
+} from '../data/mock';
+import { useScrollPersistence } from '../hooks';
 import { ProgressBar, ResponsivePhoto } from '../components/ui';
 
 const ReviewStarIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -21,10 +26,13 @@ const ReviewStarIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 interface MoreScreenProps {
+  company: CompanyInfo;
   truckCount: number;
   driverCount: number;
+  policyCount: number;
+  reviewsSummarySubtitle: string;
   advisorUnreadCount: number;
-  inProgressFiling: InProgressFiling | null;
+  quoteDraft: QuoteDraft | null;
   onContinueQuote: () => void;
   onOpenFleet: () => void;
   onOpenPolicies: () => void;
@@ -34,6 +42,7 @@ interface MoreScreenProps {
   onOpenHelp: () => void;
   onOpenProfile: () => void;
   onOpenLegalSecurity: () => void;
+  onSignOut: () => void;
 }
 
 interface MoreMenuRow {
@@ -49,10 +58,13 @@ interface MoreMenuRow {
 }
 
 export const MoreScreen: React.FC<MoreScreenProps> = ({
+  company,
   truckCount,
   driverCount,
+  policyCount,
+  reviewsSummarySubtitle,
   advisorUnreadCount,
-  inProgressFiling,
+  quoteDraft,
   onContinueQuote,
   onOpenFleet,
   onOpenPolicies,
@@ -62,7 +74,13 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
   onOpenHelp,
   onOpenProfile,
   onOpenLegalSecurity,
+  onSignOut,
 }) => {
+  const { scrollRef, onScroll } = useScrollPersistence('more');
+  const quotePercent = quoteDraft
+    ? Math.round((quoteDraft.currentStep / quoteDraft.totalSteps) * 100)
+    : 0;
+
   const groups: { heading: string; rows: MoreMenuRow[] }[] = [
     {
       heading: 'Business',
@@ -70,7 +88,7 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
         {
           id: 'fleet',
           title: 'Fleet',
-          subtitle: `${truckCount} trucks · ${driverCount} drivers`,
+          subtitle: `${truckCount} truck${truckCount === 1 ? '' : 's'} · ${driverCount} driver${driverCount === 1 ? '' : 's'}`,
           Icon: Truck,
           iconBgClass: 'bg-[#D9F2EA]',
           iconTextClass: 'text-[#0B6B5A]',
@@ -79,7 +97,7 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
         {
           id: 'policies',
           title: 'Policies',
-          subtitle: `${POLICIES.length} active`,
+          subtitle: `${policyCount} active`,
           Icon: ShieldCheck,
           iconBgClass: 'bg-[#EEF3FB]',
           iconTextClass: 'text-[#0F2A3F]',
@@ -88,7 +106,7 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
         {
           id: 'reviews',
           title: 'Reviews',
-          subtitle: '4.9 rating · 2,400+ carriers',
+          subtitle: reviewsSummarySubtitle,
           Icon: ReviewStarIcon,
           iconBgClass: 'bg-[#FAEEDA]',
           iconTextClass: 'text-[#854F0B]',
@@ -158,14 +176,18 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
           iconBgClass: 'bg-[#FDE9E9]',
           iconTextClass: 'text-[#B91C1C]',
           danger: true,
-          onClick: () => {},
+          onClick: onSignOut,
         },
       ],
     },
   ];
 
   return (
-    <div className="flex-1 min-h-0 scroll-area screen-enter bg-[#F6F8FC] px-4 pt-4 pb-6">
+    <div
+      ref={scrollRef}
+      onScroll={onScroll}
+      className="flex-1 min-h-0 scroll-area screen-enter bg-[#F6F8FC] px-4 pt-4 pb-6"
+    >
       <div className="space-y-3">
         <h1 className="text-[20px] font-medium text-[#0F2A3F] leading-[1.2] tracking-[-0.01em]">
           More
@@ -177,16 +199,16 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
           </div>
           <div className="min-w-0">
             <div className="text-[16px] font-medium text-white leading-[1.3] truncate">
-              {COMPANY.name}
+              {company.name}
             </div>
             <div className="text-[13px] text-[#BFDBFE] leading-[1.35] truncate mt-0.5">
-              USDOT {COMPANY.usdot} · {COMPANY.mc}
+              USDOT {company.usdot} · {company.mc}
             </div>
           </div>
         </div>
       </div>
 
-      {inProgressFiling && (
+      {quoteDraft && (
         <section className="mt-[14px]">
           <h2 className="text-[13px] font-medium text-[#5F5E5A] mb-[8px]">
             Quote in progress
@@ -204,17 +226,17 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-[15px] font-medium text-[#0F2A3F] leading-[1.3] truncate">
-                    {inProgressFiling.title}
+                    {quoteDraft.title}
                   </h3>
                   <span className="text-[13px] font-medium text-[#0B6B5A] shrink-0">
-                    {inProgressFiling.percent}%
+                    {quotePercent}%
                   </span>
                 </div>
                 <p className="text-[13px] text-[#64748B] leading-[1.35] mt-0.5 truncate">
-                  {inProgressFiling.stepText}
+                  Step {quoteDraft.currentStep} of {quoteDraft.totalSteps}
                 </p>
                 <ProgressBar
-                  percent={inProgressFiling.percent}
+                  percent={quotePercent}
                   height="sm"
                   animateOnMount
                   className="mt-2"

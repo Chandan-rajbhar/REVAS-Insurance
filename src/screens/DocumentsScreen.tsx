@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   AlertCircle,
   BadgeCheck,
@@ -8,29 +8,40 @@ import {
   Plus,
   Truck,
 } from 'lucide-react';
-import { type VaultDocument } from '../data/mock';
+import { type UiState, type VaultDocument } from '../data/mock';
+import { useScrollPersistence } from '../hooks';
+import { formatExpiryCountdown, formatRelativeTime, formatShortDate } from '../lib/dates';
+import { formatFileSize } from '../lib/files';
 import { Button, EmptyState } from '../components/ui';
 
-type DocFilter = 'All' | VaultDocument['category'];
+type DocFilter = UiState['documentsFilter'];
 
 const FILTER_CATEGORIES: DocFilter[] = ['All', 'Insurance', 'Vehicles', 'Permits'];
 
 interface DocumentsScreenProps {
   documents: VaultDocument[];
+  selectedFilter: DocFilter;
+  onFilterChange: (filter: DocFilter) => void;
   alertResolved: boolean;
-  onOpenUploadSheet: (presetTitle?: string) => void;
+  onOpenUploadSheet: (options?: {
+    presetTitle?: string;
+    forMvrRequestId?: string;
+    presetCategory?: VaultDocument['category'];
+  }) => void;
   onPreviewDocument: (doc: VaultDocument) => void;
   onOpenDocMenu: (doc: VaultDocument) => void;
 }
 
 export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
   documents,
+  selectedFilter,
+  onFilterChange,
   alertResolved,
   onOpenUploadSheet,
   onPreviewDocument,
   onOpenDocMenu,
 }) => {
-  const [selectedFilter, setSelectedFilter] = useState<DocFilter>('All');
+  const { scrollRef, onScroll } = useScrollPersistence('documents');
 
   const counts = useMemo(
     () => ({
@@ -47,13 +58,23 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
     return documents.filter((d) => d.category === selectedFilter);
   }, [documents, selectedFilter]);
 
+  const formatDocMetaLine = (doc: VaultDocument): string => {
+    if (doc.expiresAt && !alertResolved) {
+      return `Card • Expires ${formatShortDate(doc.expiresAt)} (${formatExpiryCountdown(doc.expiresAt).replace(/^Expires in /, '')})`;
+    }
+    if (doc.fileSize) {
+      return `${doc.fileTypeLabel || 'File'} • ${formatFileSize(doc.fileSize)} • ${formatRelativeTime(doc.createdAt)}`;
+    }
+    return doc.metaLine;
+  };
+
   const renderDocIcon = (doc: VaultDocument) => {
-    const toneClass =
-      doc.statusTone === 'red'
-        ? 'bg-[#FEE2E2] text-[#B91C1C]'
-        : doc.category === 'Insurance'
-          ? 'bg-[#D9F2EA] text-[#0B6B5A]'
-          : 'bg-[#EEF3FB] text-[#0F2A3F]';
+    const isAlertDoc = doc.statusTone === 'red' && !(doc.id === 'doc-med' && alertResolved);
+    const toneClass = isAlertDoc
+      ? 'bg-[#FEE2E2] text-[#B91C1C]'
+      : doc.category === 'Insurance'
+        ? 'bg-[#D9F2EA] text-[#0B6B5A]'
+        : 'bg-[#EEF3FB] text-[#0F2A3F]';
 
     const icon =
       doc.category === 'Insurance' ? (
@@ -73,12 +94,19 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
 
   return (
     <div className="relative flex-1 min-h-0 w-full flex flex-col">
-      <div className="flex-1 min-h-0 scroll-area screen-enter py-4 pb-24 space-y-5">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="flex-1 min-h-0 scroll-area screen-enter py-4 pb-24 space-y-5"
+      >
         {/* Header */}
-        <div className="px-4">
+        <div className="px-4 flex items-center justify-between gap-2">
           <h1 className="text-[20px] font-bold text-[#0F172A] tracking-tight">
             Documents
           </h1>
+          <span className="text-[13px] font-medium text-[#475569]">
+            {documents.length} Active File{documents.length === 1 ? '' : 's'}
+          </span>
         </div>
 
         {/* Compact Needed Document Banner */}
@@ -94,7 +122,13 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
               <Button
                 variant="danger"
                 size="sm"
-                onClick={() => onOpenUploadSheet('MVR for Marcus Vance')}
+                onClick={() =>
+                  onOpenUploadSheet({
+                    presetTitle: 'MVR for Marcus Vance',
+                    forMvrRequestId: 'req-quote',
+                    presetCategory: 'Permits',
+                  })
+                }
                 className="shrink-0"
               >
                 Upload
@@ -111,7 +145,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
               <button
                 key={cat}
                 type="button"
-                onClick={() => setSelectedFilter(cat)}
+                onClick={() => onFilterChange(cat)}
                 aria-pressed={active}
                 className={`shrink-0 min-h-[44px] px-4 rounded-full text-[14px] font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
                   active
@@ -139,47 +173,58 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
               onAction={() => onOpenUploadSheet()}
             />
           ) : (
-            filteredDocs.map((doc) => (
-              <div
-                key={doc.id}
-                className="w-full bg-white rounded-2xl shadow-[0_1px_4px_rgba(15,23,42,0.05)] p-4 flex items-start justify-between gap-2 transition-colors hover:bg-[#EEF3FB]/35"
-              >
-                <button
-                  type="button"
-                  onClick={() => onPreviewDocument(doc)}
-                  className="flex-1 min-w-0 flex items-start gap-3 text-left cursor-pointer"
-                >
-                  {renderDocIcon(doc)}
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[15px] font-bold text-[#0F172A] leading-snug break-words">
-                      {doc.title}
-                    </div>
-                    <div
-                      className={`text-[14px] mt-1 leading-snug flex items-center gap-2 ${
-                        doc.statusTone === 'red' ? 'text-[#B91C1C] font-medium' : 'text-[#475569]'
-                      }`}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={`w-2 h-2 rounded-full shrink-0 ${
-                          doc.statusTone === 'red' ? 'bg-[#B91C1C]' : 'bg-[#0B6B5A]'
-                        }`}
-                      />
-                      <span>{doc.metaLine}</span>
-                    </div>
-                  </div>
-                </button>
+            filteredDocs.map((doc) => {
+              const isAlertDoc =
+                doc.statusTone === 'red' && !(doc.id === 'doc-med' && alertResolved);
+              const latestActivity = doc.activities?.[0];
 
-                <button
-                  type="button"
-                  onClick={() => onOpenDocMenu(doc)}
-                  aria-label={`More actions for ${doc.title}`}
-                  className="w-11 h-11 -mr-2 -mt-1 rounded-full flex items-center justify-center text-[#475569] hover:bg-[#EEF3FB] hover:text-[#0F172A] shrink-0 cursor-pointer transition-colors"
+              return (
+                <div
+                  key={doc.id}
+                  className="w-full bg-white rounded-2xl shadow-[0_1px_4px_rgba(15,23,42,0.05)] p-4 flex items-start justify-between gap-2 transition-colors hover:bg-[#EEF3FB]/35"
                 >
-                  <MoreVertical className="w-5 h-5" />
-                </button>
-              </div>
-            ))
+                  <button
+                    type="button"
+                    onClick={() => onPreviewDocument(doc)}
+                    className="flex-1 min-w-0 flex items-start gap-3 text-left cursor-pointer"
+                  >
+                    {renderDocIcon(doc)}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[15px] font-bold text-[#0F172A] leading-snug break-words">
+                        {doc.title}
+                      </div>
+                      <div
+                        className={`text-[14px] mt-1 leading-snug flex items-center gap-2 ${
+                          isAlertDoc ? 'text-[#B91C1C] font-medium' : 'text-[#475569]'
+                        }`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`w-2 h-2 rounded-full shrink-0 ${
+                            isAlertDoc ? 'bg-[#B91C1C]' : 'bg-[#0B6B5A]'
+                          }`}
+                        />
+                        <span>{formatDocMetaLine(doc)}</span>
+                      </div>
+                      {latestActivity && (
+                        <div className="mt-1 text-[12px] text-[#0B6B5A] font-medium truncate">
+                          {latestActivity.text} · {formatRelativeTime(latestActivity.createdAt)}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onOpenDocMenu(doc)}
+                    aria-label={`More actions for ${doc.title}`}
+                    className="w-11 h-11 -mr-2 -mt-1 rounded-full flex items-center justify-center text-[#475569] hover:bg-[#EEF3FB] hover:text-[#0F172A] shrink-0 cursor-pointer transition-colors"
+                  >
+                    <MoreVertical className="w-5 h-5" />
+                  </button>
+                </div>
+              );
+            })
           )}
         </div>
       </div>

@@ -1,13 +1,18 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { ArrowLeft, Plus, Truck, Users } from 'lucide-react';
-import { COMPANY, type FleetDriver, type FleetTruck } from '../data/mock';
+import { type FleetDriver, type FleetTruck, type UiState } from '../data/mock';
+import { useScrollPersistence } from '../hooks';
+import { formatExpiryCountdown, formatShortDate, getDaysUntil } from '../lib/dates';
 import { EmptyState } from '../components/ui';
 
-type FleetSegment = 'trucks' | 'drivers';
+type FleetSegment = UiState['fleetSegment'];
 
 interface FleetScreenProps {
+  companyName: string;
   trucks: FleetTruck[];
   drivers: FleetDriver[];
+  segment: FleetSegment;
+  onSegmentChange: (segment: FleetSegment) => void;
   onBack: () => void;
   onSelectTruck: (truck: FleetTruck) => void;
   onSelectDriver: (driver: FleetDriver) => void;
@@ -34,15 +39,35 @@ const DRIVER_TONE_CLASSES: Record<
 };
 
 export const FleetScreen: React.FC<FleetScreenProps> = ({
+  companyName,
   trucks,
   drivers,
+  segment,
+  onSegmentChange,
   onBack,
   onSelectTruck,
   onSelectDriver,
   onAddTruck,
   onAddDriver,
 }) => {
-  const [segment, setSegment] = useState<FleetSegment>('trucks');
+  const { scrollRef, onScroll } = useScrollPersistence('fleet');
+
+  const getDriverStatus = (driver: FleetDriver): {
+    label: string;
+    tone: FleetDriver['statusTone'];
+  } => {
+    const days = getDaysUntil(driver.medicalExpiryIso);
+    if (days !== null && days <= 30) {
+      return {
+        label: formatExpiryCountdown(driver.medicalExpiryIso),
+        tone: days <= 14 ? 'red' : 'amber',
+      };
+    }
+    return {
+      label: 'Active',
+      tone: 'green',
+    };
+  };
 
   return (
     <div className="flex flex-col flex-1 min-h-0 w-full min-w-0 bg-[#F6F8FC]">
@@ -62,7 +87,7 @@ export const FleetScreen: React.FC<FleetScreenProps> = ({
               Fleet
             </h1>
             <p className="text-[14px] text-[#64748B] leading-[1.3] truncate mt-[2px]">
-              {COMPANY.name}
+              {companyName}
             </p>
           </div>
         </div>
@@ -78,7 +103,7 @@ export const FleetScreen: React.FC<FleetScreenProps> = ({
               type="button"
               role="tab"
               aria-selected={segment === 'trucks'}
-              onClick={() => setSegment('trucks')}
+              onClick={() => onSegmentChange('trucks')}
               className={`flex-1 rounded-[9px] text-[14px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
                 segment === 'trucks'
                   ? 'bg-[#0F2A3F] text-white'
@@ -92,7 +117,7 @@ export const FleetScreen: React.FC<FleetScreenProps> = ({
               type="button"
               role="tab"
               aria-selected={segment === 'drivers'}
-              onClick={() => setSegment('drivers')}
+              onClick={() => onSegmentChange('drivers')}
               className={`flex-1 rounded-[9px] text-[14px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
                 segment === 'drivers'
                   ? 'bg-[#0F2A3F] text-white'
@@ -106,7 +131,11 @@ export const FleetScreen: React.FC<FleetScreenProps> = ({
       </header>
 
       {/* Scrollable List */}
-      <div className="flex-1 min-h-0 scroll-area px-4 pt-3 pb-6">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="flex-1 min-h-0 scroll-area px-4 pt-3 pb-6"
+      >
         {segment === 'trucks' ? (
           trucks.length === 0 ? (
             <EmptyState
@@ -169,7 +198,8 @@ export const FleetScreen: React.FC<FleetScreenProps> = ({
             style={{ border: '0.5px solid #E1E5EC' }}
           >
             {drivers.map((driver, idx) => {
-              const tone = DRIVER_TONE_CLASSES[driver.statusTone];
+              const status = getDriverStatus(driver);
+              const tone = DRIVER_TONE_CLASSES[status.tone];
               return (
                 <button
                   key={driver.id}
@@ -189,14 +219,14 @@ export const FleetScreen: React.FC<FleetScreenProps> = ({
                       {driver.name}
                     </div>
                     <div className="text-[13px] text-[#64748B] leading-[1.35] truncate mt-0.5">
-                      CDL · Medical card valid until {driver.medicalValidUntil}
+                      CDL · Medical card valid until {formatShortDate(driver.medicalExpiryIso)}
                     </div>
                   </div>
 
                   <span
                     className={`shrink-0 px-2.5 py-1 rounded-full text-[12px] font-medium whitespace-nowrap ${tone.pill}`}
                   >
-                    {driver.statusLabel}
+                    {status.label}
                   </span>
                 </button>
               );

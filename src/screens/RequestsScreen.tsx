@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   ChevronDown,
   ChevronUp,
@@ -7,14 +7,20 @@ import {
   Receipt,
   UploadCloud,
 } from 'lucide-react';
-import { ADVISOR, type RequestItem } from '../data/mock';
+import { ADVISOR, type RequestItem, type UiState } from '../data/mock';
+import { useScrollPersistence } from '../hooks';
+import { formatRelativeTime } from '../lib/dates';
 import { Badge, Button, Card, EmptyState, StepTracker } from '../components/ui';
 
-type RequestFilter = 'All' | 'in_progress' | 'action_needed' | 'cleared';
+type RequestFilter = UiState['requestsFilter'];
 
 interface RequestsScreenProps {
   requests: RequestItem[];
-  onProvideInfo: () => void;
+  activeFilter: RequestFilter;
+  expandedMap: Record<string, boolean>;
+  onFilterChange: (filter: RequestFilter) => void;
+  onToggleExpand: (id: string) => void;
+  onProvideInfo: (requestId: string) => void;
   onMessageSarah: () => void;
   onViewInvoice: (req: RequestItem) => void;
   onDownloadNotice: (req: RequestItem) => void;
@@ -22,17 +28,20 @@ interface RequestsScreenProps {
 
 export const RequestsScreen: React.FC<RequestsScreenProps> = ({
   requests,
+  activeFilter,
+  expandedMap,
+  onFilterChange,
+  onToggleExpand,
   onProvideInfo,
   onMessageSarah,
   onViewInvoice,
   onDownloadNotice,
 }) => {
-  const [activeFilter, setActiveFilter] = useState<RequestFilter>('All');
-  const [expandedMap, setExpandedMap] = useState<Record<string, boolean>>({});
+  const { scrollRef, onScroll } = useScrollPersistence('requests');
 
   const counts = useMemo(
     () => ({
-      All: requests.length,
+      all: requests.length,
       in_progress: requests.filter((r) => r.filterTags.includes('in_progress')).length,
       action_needed: requests.filter((r) => r.filterTags.includes('action_needed')).length,
       cleared: requests.filter((r) => r.filterTags.includes('cleared')).length,
@@ -41,7 +50,7 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({
   );
 
   const filteredRequests = useMemo(() => {
-    if (activeFilter === 'All') return requests;
+    if (activeFilter === 'all') return requests;
     return requests.filter((r) => r.filterTags.includes(activeFilter));
   }, [requests, activeFilter]);
 
@@ -50,13 +59,12 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({
     return Boolean(req.actionNeeded);
   };
 
-  const toggleExpand = (req: RequestItem) => {
-    const current = isExpanded(req);
-    setExpandedMap((prev) => ({ ...prev, [req.id]: !current }));
-  };
-
   return (
-    <div className="flex-1 min-h-0 scroll-area screen-enter py-4 space-y-5">
+    <div
+      ref={scrollRef}
+      onScroll={onScroll}
+      className="flex-1 min-h-0 scroll-area screen-enter py-4 space-y-5"
+    >
       {/* Header */}
       <div className="px-4">
         <h1 className="text-[20px] font-bold text-[#0F172A] tracking-tight">
@@ -68,7 +76,7 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({
       <div className="w-full px-4 flex items-center gap-2 overflow-x-auto no-scrollbar">
         {(
           [
-            { id: 'All', label: 'All', count: counts.All },
+            { id: 'all', label: 'All', count: counts.all },
             { id: 'in_progress', label: 'In Progress', count: counts.in_progress },
             {
               id: 'action_needed',
@@ -84,7 +92,7 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({
             <button
               key={chip.id}
               type="button"
-              onClick={() => setActiveFilter(chip.id)}
+              onClick={() => onFilterChange(chip.id)}
               aria-pressed={active}
               className={`shrink-0 min-h-[44px] px-4 rounded-full text-[14px] font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
                 active
@@ -115,7 +123,7 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({
             title="No requests here"
             description="No filings or quotes match this filter right now."
             actionLabel="Show all requests"
-            onAction={() => setActiveFilter('All')}
+            onAction={() => onFilterChange('all')}
           />
         ) : (
           filteredRequests.map((req) => {
@@ -124,7 +132,7 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({
               <Card key={req.id} padding="none" className="overflow-hidden">
                 <button
                   type="button"
-                  onClick={() => toggleExpand(req)}
+                  onClick={() => onToggleExpand(req.id)}
                   aria-expanded={expanded}
                   className="w-full min-h-[68px] p-4 flex items-center justify-between gap-3 text-left hover:bg-[#EEF3FB]/35 transition-colors cursor-pointer"
                 >
@@ -153,7 +161,11 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({
                   <div className="px-4 pb-4 pt-1 space-y-4">
                     <div className="flex items-center justify-between gap-2 text-[13px] text-[#475569]">
                       <span className="font-mono">{req.ref}</span>
-                      <span>{req.stepProgress || req.timestamp}</span>
+                      <span>
+                        {req.stepProgress
+                          ? `${req.stepProgress} • ${formatRelativeTime(req.createdAt)}`
+                          : formatRelativeTime(req.createdAt)}
+                      </span>
                     </div>
 
                     {req.stepper && <StepTracker steps={req.stepper.steps} />}
@@ -169,12 +181,23 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({
                       </div>
                     )}
 
+                    {req.timeline && req.timeline.length > 0 && (
+                      <div className="space-y-1.5 border-l-2 border-[#D9F2EA] pl-3">
+                        {req.timeline.map((item) => (
+                          <div key={item.id} className="text-[12px] text-[#475569] flex items-center justify-between gap-2">
+                            <span className="font-medium text-[#0F2A3F] truncate">{item.label}</span>
+                            <span className="shrink-0 text-[#64748B]">{formatRelativeTime(item.at)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {req.actionNeeded && (
                       <div className="btn-row-responsive flex items-center gap-3">
                         <Button
                           variant="teal"
                           size="md"
-                          onClick={onProvideInfo}
+                          onClick={() => onProvideInfo(req.id)}
                           className="flex-1"
                         >
                           <UploadCloud className="w-4 h-4" />

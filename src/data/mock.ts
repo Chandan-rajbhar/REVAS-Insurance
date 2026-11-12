@@ -1,3 +1,5 @@
+import { daysAgoIso, daysFromNowIso, minutesAgoIso, nowIso } from '../lib/dates';
+
 export type TabId = 'home' | 'services' | 'documents' | 'requests' | 'more';
 export type ScreenId =
   | TabId
@@ -39,10 +41,10 @@ export const HOME_IMAGES: Record<
   HomeImageAsset
 > = {
   heroTruck: {
-    src: '/images/hero-truck.webp',
-    srcSet: '/images/hero-truck-800.webp 800w, /images/hero-truck.webp 1200w',
+    src: '/images/hero-truck-2.webp',
+    srcSet: '/images/hero-truck-2-800.webp 800w, /images/hero-truck-2.webp 1200w',
     sizes: '(max-width: 480px) 100vw, 480px',
-    alt: 'Commercial semi truck driving along an open highway at sunrise golden hour',
+    alt: 'Deep navy sleeper semi-truck pulling a white dry van trailer along an open interstate highway curve at golden sunrise',
     width: 1200,
     height: 800,
   },
@@ -132,8 +134,7 @@ export interface FleetDriver {
   initials: string;
   cdlNumber: string;
   cdlState: string;
-  medicalValidUntil: string;
-  statusLabel: string;
+  medicalExpiryIso: string;
   statusTone: 'green' | 'red' | 'amber';
   assignedUnit: string;
   phone: string;
@@ -161,6 +162,12 @@ export interface ServiceItem {
   ctaLabel: string;
 }
 
+export interface DocumentActivity {
+  id: string;
+  text: string;
+  createdAt: string;
+}
+
 export interface VaultDocument {
   id: string;
   category: 'Insurance' | 'Vehicles' | 'Permits';
@@ -168,12 +175,27 @@ export interface VaultDocument {
   statusTone: 'teal' | 'red';
   title: string;
   previewSummary: string;
+  createdAt: string;
+  expiresAt?: string;
+  fileTypeLabel?: string;
+  fileName?: string;
+  fileType?: string;
+  fileSize?: number;
+  dataUrl?: string;
+  previewOmitted?: boolean;
+  activities?: DocumentActivity[];
+}
+
+export interface RequestTimelineEntry {
+  id: string;
+  label: string;
+  at: string;
 }
 
 export interface RequestItem {
   id: string;
   ref: string;
-  timestamp: string;
+  createdAt: string;
   statusLabel: string;
   statusTone: 'red' | 'teal' | 'neutral';
   filterTags: ('in_progress' | 'action_needed' | 'cleared')[];
@@ -187,14 +209,14 @@ export interface RequestItem {
   advisorNote?: string;
   receiptAmount?: string;
   downloadNotice?: string;
+  timeline?: RequestTimelineEntry[];
 }
 
 export interface NotificationItem {
   id: string;
-  section: 'today' | 'earlier';
   title: string;
   body: string;
-  time: string;
+  createdAt: string;
   read: boolean;
   urgent?: boolean;
   targetScreen?: ScreenId;
@@ -205,8 +227,82 @@ export interface CarrierReview {
   initials: string;
   company: string;
   rating: number;
-  timeAgo: string;
+  createdAt: string;
   text: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  from: 'sarah' | 'user';
+  text: string;
+  createdAt: string;
+}
+
+export type QuoteStep = 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface QuoteDraft {
+  id: string;
+  title: string;
+  currentStep: QuoteStep;
+  totalSteps: 6;
+  updatedAt: string;
+  effectiveDate: string;
+  garagingState: string;
+  liabilityLimit: '$750,000 CSL' | '$1,000,000 CSL' | '$2,000,000 CSL';
+  authorityScope: 'Interstate (48 States)' | 'Regional Multi-State' | 'Intrastate Only';
+  operatingRadius: '100 mi' | '300 mi' | '500+ mi';
+  annualMiles: string;
+  hazmat: boolean;
+  vehicles: VehicleItem[];
+  trailerType: string;
+  cargoClass: string;
+  maxCargoValue: string;
+  coverages: CoverageOption[];
+  selectedDriverIds: string[];
+  priorCarrier: string;
+  yearsInBusiness: string;
+  lossHistory: '0 claims (Clean 3 yrs)' | '1 minor claim' | '2+ claims';
+  filingsNeeded: string[];
+  submissionNotes: string;
+}
+
+export interface AppSettings {
+  reduceMotion: boolean;
+  showTutorial: boolean;
+  session: {
+    signedIn: boolean;
+    userEmail: string;
+    lastSignedInAt: string;
+  };
+}
+
+export interface UiState {
+  activeTab: TabId;
+  screen: ScreenId;
+  alertResolved: boolean;
+  servicesSearch: string;
+  servicesFilter: 'All' | 'Filings' | 'Permits' | 'Safety';
+  documentsFilter: 'All' | 'Insurance' | 'Vehicles' | 'Permits';
+  requestsFilter: 'all' | 'in_progress' | 'action_needed' | 'cleared';
+  requestsExpanded: Record<string, boolean>;
+  notificationsFilter: 'all' | 'unread' | 'urgent';
+  fleetSegment: 'trucks' | 'drivers';
+  scrollPositions: Record<string, number>;
+}
+
+export interface RevasSeedBundle {
+  company: CompanyInfo;
+  trucks: FleetTruck[];
+  drivers: FleetDriver[];
+  policies: PolicyItem[];
+  documents: VaultDocument[];
+  requests: RequestItem[];
+  notifications: NotificationItem[];
+  quote: QuoteDraft | null;
+  reviews: CarrierReview[];
+  chatMessages: ChatMessage[];
+  settings: AppSettings;
+  ui: UiState;
 }
 
 export const COMPANY: CompanyInfo = {
@@ -398,8 +494,7 @@ export const INITIAL_DRIVERS: FleetDriver[] = [
     initials: 'MV',
     cdlNumber: 'CDL-A ••••8841',
     cdlState: 'TX',
-    medicalValidUntil: 'Nov 18, 2025',
-    statusLabel: 'Expires in 9 days',
+    medicalExpiryIso: daysFromNowIso(9),
     statusTone: 'red',
     assignedUnit: 'Unit #101',
     phone: '(214) 555-0142',
@@ -410,8 +505,7 @@ export const INITIAL_DRIVERS: FleetDriver[] = [
     initials: 'ER',
     cdlNumber: 'CDL-A ••••3190',
     cdlState: 'TX',
-    medicalValidUntil: 'Aug 14, 2026',
-    statusLabel: 'Active',
+    medicalExpiryIso: daysFromNowIso(280),
     statusTone: 'green',
     assignedUnit: 'Unit #102',
     phone: '(214) 555-0168',
@@ -422,8 +516,7 @@ export const INITIAL_DRIVERS: FleetDriver[] = [
     initials: 'DH',
     cdlNumber: 'CDL-A ••••5502',
     cdlState: 'OK',
-    medicalValidUntil: 'Jun 03, 2026',
-    statusLabel: 'Active',
+    medicalExpiryIso: daysFromNowIso(210),
     statusTone: 'green',
     assignedUnit: 'Unit #103',
     phone: '(405) 555-0119',
@@ -434,8 +527,7 @@ export const INITIAL_DRIVERS: FleetDriver[] = [
     initials: 'CM',
     cdlNumber: 'CDL-A ••••7429',
     cdlState: 'TX',
-    medicalValidUntil: 'Nov 22, 2026',
-    statusLabel: 'Active',
+    medicalExpiryIso: daysFromNowIso(340),
     statusTone: 'green',
     assignedUnit: 'Unit #104',
     phone: '(214) 555-0183',
@@ -446,8 +538,7 @@ export const INITIAL_DRIVERS: FleetDriver[] = [
     initials: 'TB',
     cdlNumber: 'CDL-A ••••1904',
     cdlState: 'LA',
-    medicalValidUntil: 'Mar 28, 2026',
-    statusLabel: 'Active',
+    medicalExpiryIso: daysFromNowIso(140),
     statusTone: 'green',
     assignedUnit: 'Unit #106',
     phone: '(318) 555-0177',
@@ -595,6 +686,9 @@ export const INITIAL_DOCUMENTS: VaultDocument[] = [
     title: 'Certificate of Insurance (COI) — Auto & Cargo',
     previewSummary:
       'ACORD 25 Certificate of Liability Insurance • Progressive Commercial (PRG-99042) & Lloyd’s (LLY-44021) • $1,000,000 Auto / $250,000 Cargo.',
+    createdAt: daysAgoIso(45),
+    fileTypeLabel: 'PDF',
+    activities: [],
   },
   {
     id: 'doc-ifta',
@@ -604,6 +698,9 @@ export const INITIAL_DOCUMENTS: VaultDocument[] = [
     title: '2024–2025 IFTA License & Cab Credentials',
     previewSummary:
       'Texas IFTA License #TX-3892011 • Decals verified for all 6 power units.',
+    createdAt: daysAgoIso(32),
+    fileTypeLabel: 'PDF',
+    activities: [],
   },
   {
     id: 'doc-boc3',
@@ -613,15 +710,22 @@ export const INITIAL_DOCUMENTS: VaultDocument[] = [
     title: 'BOC-3 Process Agent Designation (50 States)',
     previewSummary:
       'Blanket Process Agent Designation recorded on SAFER for MC-145290.',
+    createdAt: daysAgoIso(28),
+    fileTypeLabel: 'PDF',
+    activities: [],
   },
   {
     id: 'doc-med',
     category: 'Permits',
-    metaLine: 'Card • Expires Nov 18, 2025 (9 days)',
+    metaLine: 'Card • Renewal due soon',
     statusTone: 'red',
     title: "Medical Examiner's Certificate — Marcus Vance",
     previewSummary:
-      'Commercial Driver Medical Card • Driver: Marcus Vance • Renewal needed before Nov 18, 2025.',
+      'Commercial Driver Medical Card • Driver: Marcus Vance • Renewal needed before expiration.',
+    createdAt: daysAgoIso(12),
+    expiresAt: daysFromNowIso(9),
+    fileTypeLabel: 'Card',
+    activities: [],
   },
   {
     id: 'doc-cab',
@@ -631,6 +735,9 @@ export const INITIAL_DOCUMENTS: VaultDocument[] = [
     title: 'Apportioned Cab Card — 2023 Kenworth T680 (Unit #104)',
     previewSummary:
       'IRP Apportioned Registration Cab Card • All 48 states • GVW 80,000 lbs.',
+    createdAt: daysAgoIso(19),
+    fileTypeLabel: 'PDF',
+    activities: [],
   },
 ];
 
@@ -638,7 +745,7 @@ export const INITIAL_REQUESTS: RequestItem[] = [
   {
     id: 'req-quote',
     ref: 'REV-Q-88219',
-    timestamp: '2 days ago',
+    createdAt: daysAgoIso(2),
     statusLabel: 'Action needed',
     statusTone: 'red',
     filterTags: ['in_progress', 'action_needed'],
@@ -655,22 +762,29 @@ export const INITIAL_REQUESTS: RequestItem[] = [
     },
     advisorNote:
       'Comparing market quotes with Progressive & Northland. Please upload the updated driving record (MVR) for Marcus Vance.',
+    timeline: [
+      { id: 'tl-1', label: 'Quote intake opened', at: daysAgoIso(2) },
+      { id: 'tl-2', label: 'Sarah Jenkins requested updated MVR', at: daysAgoIso(1) },
+    ],
   },
   {
     id: 'req-ucr',
     ref: 'REV-DOT-44910',
-    timestamp: 'Yesterday',
+    createdAt: daysAgoIso(1),
     statusLabel: 'In progress',
     statusTone: 'teal',
     filterTags: ['in_progress'],
     title: '2025 UCR Registration',
     subtitle: 'Annual multi-state authority renewal • Step 3 of 4',
     receiptAmount: '$176.00 Paid',
+    timeline: [
+      { id: 'tl-ucr-1', label: 'UCR filing payment received ($176.00)', at: daysAgoIso(1) },
+    ],
   },
   {
     id: 'req-boc3',
     ref: 'REV-DOT-39102',
-    timestamp: 'Oct 04, 2024',
+    createdAt: daysAgoIso(38),
     statusLabel: 'Active',
     statusTone: 'teal',
     filterTags: ['cleared'],
@@ -681,7 +795,7 @@ export const INITIAL_REQUESTS: RequestItem[] = [
   {
     id: 'req-ch',
     ref: 'REV-DRV-1029',
-    timestamp: '3 days ago',
+    createdAt: daysAgoIso(3),
     statusLabel: 'Cleared',
     statusTone: 'teal',
     filterTags: ['cleared'],
@@ -693,39 +807,35 @@ export const INITIAL_REQUESTS: RequestItem[] = [
 export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
   {
     id: 'notif-1',
-    section: 'today',
     title: 'Medical card expires in 9 days',
-    body: 'Marcus Vance needs an updated medical card before Nov 18, 2025.',
-    time: '18m ago',
+    body: 'Marcus Vance needs an updated medical card before expiration.',
+    createdAt: minutesAgoIso(18),
     read: false,
     urgent: true,
     targetScreen: 'documents',
   },
   {
     id: 'notif-2',
-    section: 'today',
     title: 'MVR needed for Fleet Policy Quote',
     body: 'Sarah Jenkins requested an updated MVR for Marcus Vance.',
-    time: '2h ago',
+    createdAt: minutesAgoIso(120),
     read: false,
     urgent: true,
     targetScreen: 'requests',
   },
   {
     id: 'notif-3',
-    section: 'earlier',
     title: '2025 UCR payment confirmed',
     body: 'Your $176.00 UCR filing fee was received and submitted.',
-    time: 'Yesterday',
+    createdAt: daysAgoIso(1),
     read: false,
     targetScreen: 'requests',
   },
   {
     id: 'notif-4',
-    section: 'earlier',
     title: 'BOC-3 filing is active',
     body: 'Electronic blanket process agent designation verified in 50 states.',
-    time: '3 days ago',
+    createdAt: daysAgoIso(3),
     read: true,
   },
 ];
@@ -742,7 +852,7 @@ export const INITIAL_REVIEWS: CarrierReview[] = [
     initials: 'RT',
     company: "Ray's Transport",
     rating: 5,
-    timeAgo: '2 weeks ago',
+    createdAt: daysAgoIso(14),
     text: 'Filed our UCR and BOC-3 in one day. Sarah answered every question.',
   },
   {
@@ -750,7 +860,7 @@ export const INITIAL_REVIEWS: CarrierReview[] = [
     initials: 'NL',
     company: 'North Line Freight',
     rating: 5,
-    timeAgo: '1 month ago',
+    createdAt: daysAgoIso(30),
     text: 'Quote was fast and the fleet coverage was clear. Easy to upload documents.',
   },
   {
@@ -758,7 +868,156 @@ export const INITIAL_REVIEWS: CarrierReview[] = [
     initials: 'HV',
     company: 'Horizon Valley Hauling',
     rating: 5,
-    timeAgo: '2 months ago',
+    createdAt: daysAgoIso(60),
     text: 'Having our COIs, permits, and driver medical cards in one place saves us hours every week.',
   },
 ];
+
+export function createInitialChatMessages(baseNowMs = Date.now()): ChatMessage[] {
+  return [
+    {
+      id: 'chat-1',
+      from: 'sarah',
+      text: "Hi! I'm reviewing your Progressive & Northland fleet quote. Once you upload Marcus Vance's updated MVR, we can lock in rates.",
+      createdAt: minutesAgoIso(18, baseNowMs),
+    },
+    {
+      id: 'chat-2',
+      from: 'sarah',
+      text: 'Also a reminder: UCR registration for 2025 can be filed right inside Services whenever you are ready.',
+      createdAt: minutesAgoIso(17, baseNowMs),
+    },
+  ];
+}
+
+export function createDefaultQuoteDraft(
+  baseNowMs = Date.now(),
+  step: QuoteStep = 3,
+): QuoteDraft {
+  return {
+    id: 'quote-fleet-2025',
+    title: 'Fleet Policy Quote',
+    currentStep: step,
+    totalSteps: 6,
+    updatedAt: nowIso(baseNowMs),
+    effectiveDate: daysFromNowIso(15, baseNowMs).slice(0, 10),
+    garagingState: 'TX',
+    liabilityLimit: '$1,000,000 CSL',
+    authorityScope: 'Interstate (48 States)',
+    operatingRadius: '500+ mi',
+    annualMiles: '120,000',
+    hazmat: false,
+    vehicles: INITIAL_VEHICLES.map((v) => ({ ...v })),
+    trailerType: TRAILER_TYPES[0],
+    cargoClass: CARGO_CLASSIFICATIONS[0],
+    maxCargoValue: '150,000',
+    coverages: INITIAL_COVERAGE_OPTIONS.map((c) => ({ ...c })),
+    selectedDriverIds: INITIAL_DRIVERS.map((d) => d.id),
+    priorCarrier: 'Progressive Commercial',
+    yearsInBusiness: '6',
+    lossHistory: '0 claims (Clean 3 yrs)',
+    filingsNeeded: ['BMC-91X Federal Filing', 'MCS-90 Endorsement'],
+    submissionNotes: '',
+  };
+}
+
+export function createInitialSettings(baseNowMs = Date.now()): AppSettings {
+  return {
+    reduceMotion: false,
+    showTutorial: false,
+    session: {
+      signedIn: true,
+      userEmail: COMPANY.email,
+      lastSignedInAt: nowIso(baseNowMs),
+    },
+  };
+}
+
+export function createInitialUiState(): UiState {
+  return {
+    activeTab: 'home',
+    screen: 'home',
+    alertResolved: false,
+    servicesSearch: '',
+    servicesFilter: 'All',
+    documentsFilter: 'All',
+    requestsFilter: 'all',
+    requestsExpanded: {},
+    notificationsFilter: 'all',
+    fleetSegment: 'trucks',
+    scrollPositions: {},
+  };
+}
+
+export function createSeedBundle(baseNowMs = Date.now()): RevasSeedBundle {
+  return {
+    company: { ...COMPANY },
+    trucks: INITIAL_TRUCKS.map((t) => ({ ...t })),
+    drivers: INITIAL_DRIVERS.map((d, idx) => ({
+      ...d,
+      medicalExpiryIso:
+        idx === 0
+          ? daysFromNowIso(9, baseNowMs)
+          : idx === 1
+            ? daysFromNowIso(280, baseNowMs)
+            : idx === 2
+              ? daysFromNowIso(210, baseNowMs)
+              : idx === 3
+                ? daysFromNowIso(340, baseNowMs)
+                : daysFromNowIso(140, baseNowMs),
+    })),
+    policies: POLICIES.map((p) => ({ ...p, image: { ...p.image } })),
+    documents: INITIAL_DOCUMENTS.map((doc, idx) => ({
+      ...doc,
+      createdAt:
+        idx === 0
+          ? daysAgoIso(45, baseNowMs)
+          : idx === 1
+            ? daysAgoIso(32, baseNowMs)
+            : idx === 2
+              ? daysAgoIso(28, baseNowMs)
+              : idx === 3
+                ? daysAgoIso(12, baseNowMs)
+                : daysAgoIso(19, baseNowMs),
+      expiresAt: idx === 3 ? daysFromNowIso(9, baseNowMs) : undefined,
+      activities: [],
+    })),
+    requests: INITIAL_REQUESTS.map((r, idx) => ({
+      ...r,
+      createdAt:
+        idx === 0
+          ? daysAgoIso(2, baseNowMs)
+          : idx === 1
+            ? daysAgoIso(1, baseNowMs)
+            : idx === 2
+              ? daysAgoIso(38, baseNowMs)
+              : daysAgoIso(3, baseNowMs),
+      stepper: r.stepper ? { steps: r.stepper.steps.map((s) => ({ ...s })) } : undefined,
+      timeline: r.timeline ? r.timeline.map((t) => ({ ...t })) : undefined,
+    })),
+    notifications: INITIAL_NOTIFICATIONS.map((n, idx) => ({
+      ...n,
+      createdAt:
+        idx === 0
+          ? minutesAgoIso(18, baseNowMs)
+          : idx === 1
+            ? minutesAgoIso(120, baseNowMs)
+            : idx === 2
+              ? daysAgoIso(1, baseNowMs)
+              : daysAgoIso(3, baseNowMs),
+    })),
+    quote: createDefaultQuoteDraft(baseNowMs, 3),
+    reviews: INITIAL_REVIEWS.map((r, idx) => ({
+      ...r,
+      createdAt:
+        idx === 0
+          ? daysAgoIso(14, baseNowMs)
+          : idx === 1
+            ? daysAgoIso(30, baseNowMs)
+            : daysAgoIso(60, baseNowMs),
+    })),
+    chatMessages: createInitialChatMessages(baseNowMs),
+    settings: createInitialSettings(baseNowMs),
+    ui: createInitialUiState(),
+  };
+}

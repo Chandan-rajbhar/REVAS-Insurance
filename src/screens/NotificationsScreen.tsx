@@ -1,21 +1,31 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { COMPANY, type NotificationItem } from '../data/mock';
+import { type NotificationItem } from '../data/mock';
+import { useScrollPersistence } from '../hooks';
+import { formatRelativeTime, isTodaySection } from '../lib/dates';
 
 type NotificationFilter = 'all' | 'unread' | 'urgent';
 
 interface NotificationsScreenProps {
+  companyName: string;
   notifications: NotificationItem[];
+  filter: NotificationFilter;
+  onFilterChange: (filter: NotificationFilter) => void;
   onBack: () => void;
   onSelectNotification: (item: NotificationItem) => void;
+  onMarkAllRead: () => void;
 }
 
 export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
+  companyName,
   notifications,
+  filter,
+  onFilterChange,
   onBack,
   onSelectNotification,
+  onMarkAllRead,
 }) => {
-  const [filter, setFilter] = useState<NotificationFilter>('all');
+  const { scrollRef, onScroll } = useScrollPersistence('notifications');
 
   const unreadCount = useMemo(
     () => notifications.filter((item) => !item.read).length,
@@ -38,12 +48,12 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
   }, [filter, notifications]);
 
   const todayItems = useMemo(
-    () => filteredItems.filter((item) => item.section === 'today'),
+    () => filteredItems.filter((item) => isTodaySection(item.createdAt)),
     [filteredItems],
   );
 
   const earlierItems = useMemo(
-    () => filteredItems.filter((item) => item.section === 'earlier'),
+    () => filteredItems.filter((item) => !isTodaySection(item.createdAt)),
     [filteredItems],
   );
 
@@ -89,7 +99,7 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
                       />
                     )}
                     <span className="text-[12px] text-[#64748B] whitespace-nowrap">
-                      {item.time}
+                      {formatRelativeTime(item.createdAt)}
                     </span>
                   </span>
                 </div>
@@ -108,23 +118,35 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
     <div className="flex flex-col flex-1 min-h-0 w-full min-w-0 bg-white">
       {/* Header */}
       <header className="safe-top bg-white shrink-0">
-        <div className="pl-[6px] pr-4 pt-[10px] pb-[8px] flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onBack}
-            aria-label="Back"
-            className="w-11 h-11 rounded-full flex items-center justify-center text-[#0F2A3F] hover:bg-[#F3F5FA] pressable cursor-pointer shrink-0"
-          >
-            <ArrowLeft className="w-5 h-5 stroke-[2]" />
-          </button>
-          <div className="min-w-0">
-            <h1 className="text-[20px] font-medium text-[#0F2A3F] leading-[1.2] tracking-[-0.01em] truncate">
-              Notifications
-            </h1>
-            <p className="text-[14px] text-[#64748B] leading-[1.3] truncate mt-[2px]">
-              {COMPANY.name}
-            </p>
+        <div className="pl-[6px] pr-4 pt-[10px] pb-[8px] flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="Back"
+              className="w-11 h-11 rounded-full flex items-center justify-center text-[#0F2A3F] hover:bg-[#F3F5FA] pressable cursor-pointer shrink-0"
+            >
+              <ArrowLeft className="w-5 h-5 stroke-[2]" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-[20px] font-medium text-[#0F2A3F] leading-[1.2] tracking-[-0.01em] truncate">
+                Notifications
+              </h1>
+              <p className="text-[14px] text-[#64748B] leading-[1.3] truncate mt-[2px]">
+                {companyName}
+              </p>
+            </div>
           </div>
+
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={onMarkAllRead}
+              className="min-h-[44px] px-2.5 text-[13px] font-medium text-[#0B6B5A] hover:underline whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              Mark all read
+            </button>
+          )}
         </div>
       </header>
 
@@ -137,7 +159,7 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
         <button
           type="button"
           aria-pressed={filter === 'all'}
-          onClick={() => setFilter('all')}
+          onClick={() => onFilterChange('all')}
           style={{
             border: filter === 'all' ? '0.5px solid #0F2A3F' : '0.5px solid #D3D1C7',
           }}
@@ -153,7 +175,7 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
         <button
           type="button"
           aria-pressed={filter === 'unread'}
-          onClick={() => setFilter('unread')}
+          onClick={() => onFilterChange('unread')}
           style={{
             border: filter === 'unread' ? '0.5px solid #0F2A3F' : '0.5px solid #D3D1C7',
           }}
@@ -172,7 +194,7 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
         <button
           type="button"
           aria-pressed={filter === 'urgent'}
-          onClick={() => setFilter('urgent')}
+          onClick={() => onFilterChange('urgent')}
           style={{
             border: filter === 'urgent' ? '0.5px solid #0F2A3F' : '0.5px solid #D3D1C7',
           }}
@@ -194,7 +216,11 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
       </div>
 
       {/* Scrollable Notifications List */}
-      <div className="flex-1 min-h-0 scroll-area bg-white px-4 pb-6">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="flex-1 min-h-0 scroll-area bg-white px-4 pb-6"
+      >
         {filteredItems.length === 0 ? (
           <p className="py-12 text-center text-[14px] text-[#64748B]">
             Nothing here

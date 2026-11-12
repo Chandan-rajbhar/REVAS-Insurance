@@ -12,23 +12,32 @@ import {
 } from 'lucide-react';
 import {
   ADVISOR,
-  COMPANY,
   HOME_CONTENT,
   HOME_IMAGES,
-  POLICIES,
   REVIEWS_SUMMARY,
+  type CompanyInfo,
+  type FleetDriver,
   type PolicyItem,
   type ScreenId,
   type TabId,
 } from '../data/mock';
+import { useScrollPersistence } from '../hooks';
+import { formatExpiryCountdown, formatShortDate } from '../lib/dates';
 import { ResponsivePhoto } from '../components/ui';
 
 interface HomeScreenProps {
+  company: CompanyInfo;
+  truckCount: number;
+  driverCount: number;
+  drivers: FleetDriver[];
+  policies: PolicyItem[];
+  reviewsRatingText: string;
   alertResolved: boolean;
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
   onNavigate: (screen: ScreenId) => void;
   onSwitchTab: (tab: TabId) => void;
   onUploadMedicalCard: () => void;
+  onRemindMedicalCard: () => void;
   onFileUcrNow: () => void;
   onOpenPolicyDetails: (policy: PolicyItem) => void;
   onCallAdvisor: () => void;
@@ -36,16 +45,34 @@ interface HomeScreenProps {
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
+  company,
+  truckCount,
+  driverCount,
+  drivers,
+  policies,
+  reviewsRatingText,
   alertResolved,
   scrollContainerRef,
   onNavigate,
   onSwitchTab,
   onUploadMedicalCard,
+  onRemindMedicalCard,
   onFileUcrNow,
   onOpenPolicyDetails,
   onCallAdvisor,
   onOpenHelp,
 }) => {
+  const { scrollRef, onScroll } = useScrollPersistence('home', scrollContainerRef);
+
+  const urgentDriver =
+    drivers.find((d) => d.id === 'drv-1') ?? drivers[0];
+  const dynamicAlertHeadline = urgentDriver
+    ? `Medical card ${formatExpiryCountdown(urgentDriver.medicalExpiryIso).replace(/^Expires/, 'expires')}`
+    : HOME_CONTENT.alertHeadline;
+  const dynamicAlertSubline = urgentDriver
+    ? `${urgentDriver.name} · ${formatShortDate(urgentDriver.medicalExpiryIso)}`
+    : HOME_CONTENT.alertSubline;
+
   const renderQuickActionIcon = (id: 'quote' | 'filing' | 'document') => {
     if (id === 'quote') return <Truck className="w-5 h-5 text-[#14B8A6] stroke-[2]" />;
     if (id === 'filing') return <ShieldCheck className="w-5 h-5 text-[#14B8A6] stroke-[2]" />;
@@ -60,7 +87,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   return (
     <div
-      ref={scrollContainerRef}
+      ref={scrollRef}
+      onScroll={onScroll}
       className="flex-1 min-h-0 scroll-area bg-[#F6F8FC] pb-6"
     >
       {/* 1. Hero Company Card */}
@@ -94,12 +122,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               {HOME_CONTENT.greeting}
             </p>
             <h1 className="mt-1 text-[26px] font-medium text-white leading-[1.2] tracking-[-0.015em]">
-              {COMPANY.name}
+              {company.name}
             </h1>
             <p className="mt-[14px] flex items-center gap-2 text-[14px] font-normal text-[#BFDBFE] leading-[1.35]">
               <span aria-hidden="true" className="w-2 h-2 rounded-full bg-[#34D399] shrink-0" />
               <span>
-                {COMPANY.status} · {COMPANY.powerUnits} trucks · {COMPANY.driversCount} drivers
+                {company.status} · {truckCount} truck{truckCount === 1 ? '' : 's'} · {driverCount} driver{driverCount === 1 ? '' : 's'}
               </span>
             </p>
           </div>
@@ -113,29 +141,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       >
         {!alertResolved ? (
           <div
-            className="rounded-2xl bg-white p-[14px] shadow-[0_8px_24px_rgba(15,42,63,0.06)] flex items-center gap-2.5"
+            className="rounded-2xl bg-white p-[14px] shadow-[0_8px_24px_rgba(15,42,63,0.06)] flex flex-wrap items-center justify-between gap-2.5"
             style={{ border: '0.5px solid #FCA5A5' }}
           >
-            <div className="w-10 h-10 rounded-full bg-[#FEE2E2] text-[#B91C1C] flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-[18px] h-[18px] stroke-[2.2]" />
+            <div className="flex items-center gap-2.5 min-w-[160px] flex-1">
+              <div className="w-10 h-10 rounded-full bg-[#FEE2E2] text-[#B91C1C] flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-[18px] h-[18px] stroke-[2.2]" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <h2 className="text-[14px] font-medium text-[#0F172A] leading-[1.3]">
+                  {dynamicAlertHeadline}
+                </h2>
+                <p className="text-[13px] text-[#64748B] leading-[1.3] mt-0.5 truncate">
+                  {dynamicAlertSubline}
+                </p>
+              </div>
             </div>
 
-            <div className="min-w-0 flex-1">
-              <h2 className="text-[14px] font-medium text-[#0F172A] leading-[1.3]">
-                {HOME_CONTENT.alertHeadline}
-              </h2>
-              <p className="text-[13px] text-[#64748B] leading-[1.3] mt-0.5 truncate">
-                {HOME_CONTENT.alertSubline}
-              </p>
+            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+              <button
+                type="button"
+                onClick={onRemindMedicalCard}
+                className="h-10 px-3 rounded-[10px] bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#B91C1C] text-[13px] font-medium whitespace-nowrap shrink-0 pressable cursor-pointer transition-colors"
+                style={{ border: '0.5px solid #FCA5A5' }}
+              >
+                Remind
+              </button>
+              <button
+                type="button"
+                onClick={onUploadMedicalCard}
+                className="h-10 px-4 rounded-[10px] bg-[#B91C1C] hover:bg-[#991B1B] text-white text-[14px] font-semibold whitespace-nowrap shrink-0 pressable cursor-pointer transition-colors"
+              >
+                {HOME_CONTENT.alertUploadLabel}
+              </button>
             </div>
-
-            <button
-              type="button"
-              onClick={onUploadMedicalCard}
-              className="h-10 px-4 rounded-[10px] bg-[#B91C1C] hover:bg-[#991B1B] text-white text-[14px] font-semibold whitespace-nowrap shrink-0 pressable cursor-pointer transition-colors"
-            >
-              {HOME_CONTENT.alertUploadLabel}
-            </button>
           </div>
         ) : (
           <div className="rounded-2xl bg-[#D9F2EA] p-[14px] shadow-[0_8px_24px_rgba(15,42,63,0.08)] flex items-center gap-3">
@@ -268,7 +308,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
 
         <div className="mt-2.5 flex gap-3 overflow-x-auto no-scrollbar snap-x snap-mandatory px-4 scroll-pl-4 py-1.5">
-          {POLICIES.map((policy) => (
+          {policies.map((policy) => (
             <button
               key={policy.id}
               type="button"
@@ -376,7 +416,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         <button
           type="button"
           onClick={() => onNavigate('reviews')}
-          aria-label={`${REVIEWS_SUMMARY.trustedText} — ${REVIEWS_SUMMARY.rating} rating. Open reviews`}
+          aria-label={`${REVIEWS_SUMMARY.trustedText} — ${reviewsRatingText} rating. Open reviews`}
           className="w-full rounded-2xl bg-white/90 hover:bg-white px-4 py-3 shadow-[0_4px_16px_rgba(15,42,63,0.05)] flex items-center justify-between gap-3 text-left pressable cursor-pointer transition-colors"
         >
           <div className="flex items-center gap-2.5 min-w-0">
@@ -422,7 +462,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
           <div className="inline-flex items-center gap-1 text-[14px] font-bold text-[#0F172A] shrink-0">
             <Star className="w-4 h-4 text-[#0B6B5A] fill-[#14B8A6]" />
-            <span>{REVIEWS_SUMMARY.rating}</span>
+            <span>{reviewsRatingText}</span>
           </div>
         </button>
       </div>

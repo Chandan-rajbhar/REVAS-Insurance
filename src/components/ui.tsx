@@ -337,7 +337,7 @@ export interface ToastAction {
 }
 
 export interface ToastData {
-  id: number;
+  id: string | number;
   message: string;
   tone?: 'success' | 'info' | 'warning';
   action?: ToastAction;

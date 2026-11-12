@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Check,
   CheckCircle2,
@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Phone,
   PhoneOff,
+  RotateCcw,
   Send,
   Share2,
   ShieldCheck,
@@ -19,53 +20,42 @@ import {
 } from 'lucide-react';
 import {
   ADVISOR,
-  COMPANY,
   HOME_IMAGES,
-  INITIAL_REQUESTS,
-  POLICIES,
+  type ChatMessage,
+  type CompanyInfo,
   type FleetDriver,
   type FleetTruck,
   type PolicyItem,
+  type QuoteDraft,
   type RequestItem,
   type ServiceItem,
   type VaultDocument,
   type VehicleItem,
 } from '../data/mock';
+import {
+  formatClockTime,
+  formatExpiryCountdown,
+  formatRelativeTime,
+  formatShortDate,
+  getDaysUntil,
+} from '../lib/dates';
+import { formatFileSize, prepareUploadedFile, type PreparedUploadFile } from '../lib/files';
+import type { UploadDocumentPayload } from '../hooks/useDocuments';
+import type { ActiveSheet } from '../store/reducer';
 import { Badge, Button, InFrameBottomSheet, ResponsivePhoto } from './ui';
 
-export type ActiveSheet =
-  | null
-  | { type: 'help' }
-  | { type: 'legal-security' }
-  | { type: 'call'; title: string; subtitle: string; numberLabel: string }
-  | { type: 'message-sarah' }
-  | { type: 'policies-list' }
-  | { type: 'invoices-list' }
-  | { type: 'fleet-truck-details'; truck: FleetTruck }
-  | { type: 'fleet-truck-form'; mode: 'add' | 'edit'; truck?: FleetTruck }
-  | { type: 'fleet-driver-details'; driver: FleetDriver }
-  | { type: 'fleet-driver-form'; mode: 'add' | 'edit'; driver?: FleetDriver }
-  | { type: 'policy-details'; policy: PolicyItem }
-  | { type: 'coi-preview'; policy: PolicyItem }
-  | { type: 'vehicle-form'; mode: 'add' | 'edit'; vehicle?: VehicleItem }
-  | {
-      type: 'select-picker';
-      title: string;
-      options: string[];
-      current: string;
-      onSelect: (value: string) => void;
-    }
-  | { type: 'service-details'; service: ServiceItem }
-  | { type: 'service-confirm'; service: ServiceItem }
-  | { type: 'upload-doc'; presetTitle?: string }
-  | { type: 'doc-preview'; doc: VaultDocument }
-  | { type: 'doc-menu'; doc: VaultDocument }
-  | { type: 'send-shipper'; doc: VaultDocument }
-  | { type: 'invoice'; req: RequestItem }
-  | { type: 'write-review' };
+export type { ActiveSheet };
 
 interface OverlaysProps {
   sheet: ActiveSheet;
+  company: CompanyInfo;
+  policies: PolicyItem[];
+  requests: RequestItem[];
+  documents: VaultDocument[];
+  trucks: FleetTruck[];
+  drivers: FleetDriver[];
+  quote: QuoteDraft | null;
+  chatMessages: ChatMessage[];
   onClose: () => void;
   onOpenSheet: (sheet: ActiveSheet) => void;
   onSaveVehicle: (vehicle: Omit<VehicleItem, 'id'>, editId?: string) => void;
@@ -75,17 +65,27 @@ interface OverlaysProps {
   onSaveFleetDriver: (driver: Omit<FleetDriver, 'id'>, editId?: string) => void;
   onRemoveFleetDriver: (driver: FleetDriver) => void;
   onConfirmService: (service: ServiceItem) => void;
-  onConfirmUploadDoc: (
-    title: string,
-    category: VaultDocument['category'],
-    fileName: string,
-  ) => void;
+  onConfirmUploadDoc: (payload: UploadDocumentPayload) => void;
+  onDeleteDocument: (doc: VaultDocument) => void;
+  onRecordDocActivity: (docId: string, text: string, toastMessage?: string) => void;
   onSubmitReview: (rating: number, text: string) => void;
-  onShowToast: (message: string, tone?: 'success' | 'info' | 'warning') => void;
+  onSendChatMessage: (text: string) => void;
+  onSaveCompany: (patch: Partial<CompanyInfo>) => void;
+  onResetDemoData: () => void;
+  onCloseTutorial: () => void;
+  onShowToast: (message: string) => void;
 }
 
 export const Overlays: React.FC<OverlaysProps> = ({
   sheet,
+  company,
+  policies,
+  requests,
+  documents,
+  trucks,
+  drivers,
+  quote,
+  chatMessages,
   onClose,
   onOpenSheet,
   onSaveVehicle,
@@ -96,20 +96,18 @@ export const Overlays: React.FC<OverlaysProps> = ({
   onRemoveFleetDriver,
   onConfirmService,
   onConfirmUploadDoc,
+  onDeleteDocument,
+  onRecordDocActivity,
   onSubmitReview,
+  onSendChatMessage,
+  onSaveCompany,
+  onResetDemoData,
+  onCloseTutorial,
   onShowToast,
 }) => {
   const [chatInput, setChatInput] = useState('');
-  const [messages, setMessages] = useState<{ from: 'sarah' | 'user'; text: string; time: string }[]>(
-    [
-      {
-        from: 'sarah',
-        text: 'Hi! I am reviewing your Fleet Policy Quote (Step 3 of 6). Once Marcus Vance’s driving record (MVR) is uploaded, we can lock your rate.',
-        time: '10:42 AM',
-      },
-    ],
-  );
   const [shipperEmail, setShipperEmail] = useState('compliance@chrobinson.com');
+  const [shipperError, setShipperError] = useState('');
 
   if (!sheet) return null;
 
@@ -174,14 +172,14 @@ export const Overlays: React.FC<OverlaysProps> = ({
         open
         onClose={onClose}
         title="Legal & security"
-        subtitle={COMPANY.name}
+        subtitle={company.name}
       >
         <div className="space-y-4">
           <div className="rounded-2xl bg-[#F6F8FC] p-4 space-y-2">
             <div className="text-[15px] font-bold text-[#0F172A]">Document &amp; data security</div>
             <p className="text-[14px] text-[#475569] leading-relaxed">
-              Fleet certificates, driver credentials, and vehicle schedules are protected with
-              256-bit AES encryption in transit and at rest.
+              Fleet certificates, driver credentials, and vehicle schedules are persisted locally
+              under schema version revas:v1 and never sent to third-party servers.
             </p>
           </div>
 
@@ -241,9 +239,8 @@ export const Overlays: React.FC<OverlaysProps> = ({
     const sendChat = () => {
       const trimmed = chatInput.trim();
       if (!trimmed) return;
-      setMessages((prev) => [...prev, { from: 'user', text: trimmed, time: 'Just now' }]);
+      onSendChatMessage(trimmed);
       setChatInput('');
-      onShowToast(`Message sent to ${ADVISOR.name}`);
     };
 
     return (
@@ -255,9 +252,9 @@ export const Overlays: React.FC<OverlaysProps> = ({
       >
         <div className="space-y-3">
           <div className="space-y-2.5 max-h-[34dvh] overflow-y-auto no-scrollbar">
-            {messages.map((m, i) => (
+            {chatMessages.map((m) => (
               <div
-                key={i}
+                key={m.id}
                 className={`flex flex-col ${m.from === 'user' ? 'items-end' : 'items-start'}`}
               >
                 <div
@@ -269,7 +266,9 @@ export const Overlays: React.FC<OverlaysProps> = ({
                 >
                   {m.text}
                 </div>
-                <span className="text-[12px] text-[#475569] mt-1 px-1">{m.time}</span>
+                <span className="text-[12px] text-[#475569] mt-1 px-1">
+                  {formatClockTime(m.createdAt)}
+                </span>
               </div>
             ))}
           </div>
@@ -312,10 +311,10 @@ export const Overlays: React.FC<OverlaysProps> = ({
         open
         onClose={onClose}
         title="Active Policies"
-        subtitle={`${POLICIES.length} active • ${COMPANY.name}`}
+        subtitle={`${policies.length} active • ${company.name}`}
       >
         <div className="space-y-2.5">
-          {POLICIES.map((policy) => (
+          {policies.map((policy) => (
             <button
               key={policy.id}
               type="button"
@@ -343,11 +342,11 @@ export const Overlays: React.FC<OverlaysProps> = ({
 
   if (sheet.type === 'invoices-list') {
     const invoiceItems: RequestItem[] = [
-      ...INITIAL_REQUESTS.filter((r) => Boolean(r.receiptAmount)),
+      ...requests.filter((r) => Boolean(r.receiptAmount)),
       {
         id: 'inv-pol-auto',
         ref: 'INV-PRG-99042',
-        timestamp: 'Nov 30, 2024',
+        createdAt: '2024-11-30T12:00:00.000Z',
         statusLabel: 'Paid',
         statusTone: 'teal',
         filterTags: ['cleared'],
@@ -358,7 +357,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
       {
         id: 'inv-pol-cargo',
         ref: 'INV-LLY-44021',
-        timestamp: 'Nov 30, 2024',
+        createdAt: '2024-11-30T12:00:00.000Z',
         statusLabel: 'Paid',
         statusTone: 'teal',
         filterTags: ['cleared'],
@@ -388,7 +387,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
                   {inv.title}
                 </div>
                 <div className="text-[13px] text-[#64748B] truncate mt-0.5">
-                  {inv.ref} · {inv.timestamp}
+                  {inv.ref} · {formatShortDate(inv.createdAt)}
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -405,7 +404,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
   }
 
   if (sheet.type === 'fleet-truck-details') {
-    const t = sheet.truck;
+    const t = trucks.find((item) => item.id === sheet.truck.id) ?? sheet.truck;
     return (
       <InFrameBottomSheet
         open
@@ -470,7 +469,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
         open
         onClose={onClose}
         title={isEdit ? 'Edit Truck' : 'Add Truck'}
-        subtitle={COMPANY.name}
+        subtitle={company.name}
       >
         <VehicleFormBody
           key={isEdit && sheet.truck ? `fleet-edit-${sheet.truck.id}` : 'fleet-add'}
@@ -496,7 +495,6 @@ export const Overlays: React.FC<OverlaysProps> = ({
             isEdit && sheet.truck
               ? () => {
                   const target = sheet.truck!;
-                  onClose();
                   onRemoveFleetTruck(target);
                 }
               : undefined
@@ -507,13 +505,17 @@ export const Overlays: React.FC<OverlaysProps> = ({
   }
 
   if (sheet.type === 'fleet-driver-details') {
-    const d = sheet.driver;
-    const badgeClass =
-      d.statusTone === 'red'
-        ? 'bg-[#FDE9E9] text-[#B91C1C]'
-        : d.statusTone === 'amber'
-          ? 'bg-[#FEF3C7] text-[#B45309]'
-          : 'bg-[#D9F2EA] text-[#0B6B5A]';
+    const d = drivers.find((item) => item.id === sheet.driver.id) ?? sheet.driver;
+    const days = getDaysUntil(d.medicalExpiryIso);
+    const isUrgent = days !== null && days <= 14;
+    const isWarn = days !== null && days > 14 && days <= 30;
+    const statusLabel =
+      days !== null && days <= 30 ? formatExpiryCountdown(d.medicalExpiryIso) : 'Active';
+    const badgeClass = isUrgent
+      ? 'bg-[#FDE9E9] text-[#B91C1C]'
+      : isWarn
+        ? 'bg-[#FEF3C7] text-[#B45309]'
+        : 'bg-[#D9F2EA] text-[#0B6B5A]';
 
     return (
       <InFrameBottomSheet
@@ -536,14 +538,14 @@ export const Overlays: React.FC<OverlaysProps> = ({
                 <span
                   className={`inline-block px-2.5 py-0.5 rounded-full text-[12px] font-medium ${badgeClass}`}
                 >
-                  {d.statusLabel}
+                  {statusLabel}
                 </span>
               </div>
             </div>
             <div>
               <div className="text-[12px] font-medium text-[#475569]">Medical card expires</div>
               <div className="text-[14px] font-semibold text-[#0F172A] mt-0.5">
-                {d.medicalValidUntil}
+                {formatShortDate(d.medicalExpiryIso)}
               </div>
             </div>
             <div>
@@ -563,7 +565,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
             Edit driver
           </Button>
 
-          {d.statusTone === 'red' && (
+          {(isUrgent || isWarn) && (
             <Button
               variant="secondary"
               fullWidth
@@ -572,6 +574,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
                 onOpenSheet({
                   type: 'upload-doc',
                   presetTitle: `DOT Medical Card — ${d.name}`,
+                  presetCategory: 'Permits',
                 })
               }
             >
@@ -591,7 +594,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
         open
         onClose={onClose}
         title={isEdit ? 'Edit Driver' : 'Add Driver'}
-        subtitle={COMPANY.name}
+        subtitle={company.name}
       >
         <DriverFormBody
           key={isEdit && sheet.driver ? `drv-edit-${sheet.driver.id}` : 'drv-add'}
@@ -603,7 +606,6 @@ export const Overlays: React.FC<OverlaysProps> = ({
             isEdit && sheet.driver
               ? () => {
                   const target = sheet.driver!;
-                  onClose();
                   onRemoveFleetDriver(target);
                 }
               : undefined
@@ -619,7 +621,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
         open
         onClose={onClose}
         title="Write a review"
-        subtitle={COMPANY.name}
+        subtitle={company.name}
       >
         <WriteReviewBody onCancel={onClose} onSubmit={onSubmitReview} />
       </InFrameBottomSheet>
@@ -627,7 +629,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
   }
 
   if (sheet.type === 'policy-details') {
-    const p = sheet.policy;
+    const p = policies.find((item) => item.id === sheet.policy.id) ?? sheet.policy;
     return (
       <InFrameBottomSheet
         open
@@ -651,7 +653,9 @@ export const Overlays: React.FC<OverlaysProps> = ({
             </div>
             <div>
               <div className="text-[12px] font-medium text-[#475569]">Covered units</div>
-              <div className="text-[14px] font-semibold text-[#0F172A] mt-0.5">{p.unitsCovered}</div>
+              <div className="text-[14px] font-semibold text-[#0F172A] mt-0.5">
+                {p.unitsCovered}
+              </div>
             </div>
           </div>
 
@@ -683,7 +687,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
         open
         onClose={onClose}
         title="Certificate of Insurance"
-        subtitle={`${p.policyNumber} • ${COMPANY.name}`}
+        subtitle={`${p.policyNumber} • ${company.name}`}
       >
         <div className="space-y-4">
           <div className="rounded-2xl bg-[#F6F8FC] p-4 space-y-2.5 text-[14px] text-[#334155]">
@@ -692,7 +696,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
               <Badge tone="teal">Active</Badge>
             </div>
             <div>
-              <span className="text-[#475569]">Carrier:</span> {COMPANY.name}
+              <span className="text-[#475569]">Carrier:</span> {company.name}
             </div>
             <div>
               <span className="text-[#475569]">Insurer:</span> {p.carrier}
@@ -719,7 +723,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
               variant="primary"
               onClick={() => {
                 onClose();
-                onShowToast(`Certificate emailed to ${COMPANY.email}`);
+                onShowToast(`Certificate emailed to ${company.email}`);
               }}
             >
               Email Copy
@@ -732,12 +736,14 @@ export const Overlays: React.FC<OverlaysProps> = ({
 
   if (sheet.type === 'vehicle-form') {
     const isEdit = sheet.mode === 'edit';
+    const currentStep = quote?.currentStep ?? 3;
+    const totalSteps = quote?.totalSteps ?? 6;
     return (
       <InFrameBottomSheet
         open
         onClose={onClose}
         title={isEdit ? 'Edit Vehicle' : 'Add Vehicle'}
-        subtitle="Fleet Policy Quote • Step 3 of 6"
+        subtitle={`Fleet Policy Quote • Step ${currentStep} of ${totalSteps}`}
       >
         <VehicleFormBody
           key={isEdit && sheet.vehicle ? `edit-${sheet.vehicle.id}` : 'add'}
@@ -749,7 +755,6 @@ export const Overlays: React.FC<OverlaysProps> = ({
             isEdit && sheet.vehicle
               ? () => {
                   const target = sheet.vehicle!;
-                  onClose();
                   onRemoveVehicle(target);
                 }
               : undefined
@@ -806,9 +811,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
         <div className="space-y-4">
           <div className="rounded-2xl bg-[#F6F8FC] p-4 space-y-3">
             <Badge tone={s.tag.tone}>{s.tag.label}</Badge>
-            <p className="text-[14px] text-[#334155] leading-relaxed">
-              {s.description}
-            </p>
+            <p className="text-[14px] text-[#334155] leading-relaxed">{s.description}</p>
             <div
               className="pt-3 flex items-baseline justify-between gap-3"
               style={{ borderTop: '0.5px solid #E1E5EC' }}
@@ -841,18 +844,18 @@ export const Overlays: React.FC<OverlaysProps> = ({
         open
         onClose={onClose}
         title={`Request ${s.title}`}
-        subtitle={COMPANY.name}
+        subtitle={company.name}
       >
         <div className="space-y-4">
           <div className="rounded-2xl bg-[#F6F8FC] p-4 space-y-2.5 text-[14px]">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[#475569]">Company</span>
-              <span className="font-semibold text-[#0F172A]">{COMPANY.name}</span>
+              <span className="font-semibold text-[#0F172A]">{company.name}</span>
             </div>
             <div className="flex items-center justify-between gap-2">
               <span className="text-[#475569]">Authority</span>
               <span className="font-mono font-semibold text-[#0F172A]">
-                USDOT {COMPANY.usdot}
+                USDOT {company.usdot}
               </span>
             </div>
             <div className="flex items-center justify-between gap-2 pt-2">
@@ -862,7 +865,8 @@ export const Overlays: React.FC<OverlaysProps> = ({
           </div>
 
           <p className="text-[14px] text-[#475569] leading-relaxed">
-            This submits a filing request to {ADVISOR.name} and adds it to your Requests list.
+            This submits a filing request to {ADVISOR.name} and adds it to your Requests list and
+            invoice history.
           </p>
 
           <div className="btn-row-responsive grid grid-cols-2 gap-2.5">
@@ -884,11 +888,13 @@ export const Overlays: React.FC<OverlaysProps> = ({
         open
         onClose={onClose}
         title="Add Document"
-        subtitle="Select category and file to upload"
+        subtitle="Select category and upload file"
       >
         <UploadDocBody
-          key={sheet.presetTitle || 'default-upload'}
+          key={`${sheet.presetTitle || 'default'}-${sheet.forMvrRequestId || 'none'}`}
           presetTitle={sheet.presetTitle}
+          presetCategory={sheet.presetCategory}
+          forMvrRequestId={sheet.forMvrRequestId}
           onConfirm={onConfirmUploadDoc}
         />
       </InFrameBottomSheet>
@@ -896,21 +902,49 @@ export const Overlays: React.FC<OverlaysProps> = ({
   }
 
   if (sheet.type === 'doc-preview') {
-    const doc = sheet.doc;
+    const doc = documents.find((item) => item.id === sheet.doc.id) ?? sheet.doc;
+    const isImageData = Boolean(doc.dataUrl && doc.dataUrl.startsWith('data:image/'));
     return (
       <InFrameBottomSheet
         open
         onClose={onClose}
         title={doc.title}
-        subtitle={`${doc.category} • ${doc.metaLine}`}
+        subtitle={`${doc.category} • ${formatShortDate(doc.createdAt)}`}
       >
         <div className="space-y-4">
+          {isImageData && doc.dataUrl && (
+            <div className="rounded-2xl overflow-hidden bg-[#F6F8FC] border border-[#E1E5EC]">
+              <img
+                src={doc.dataUrl}
+                alt={doc.fileName || doc.title}
+                className="w-full max-h-[220px] object-contain mx-auto"
+              />
+            </div>
+          )}
+
+          {doc.previewOmitted && (
+            <div className="rounded-2xl bg-[#EEF3FB] p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white text-[#0F2A3F] flex items-center justify-center shrink-0">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[13px] font-semibold text-[#0F2A3F] truncate">
+                  {doc.fileName || 'Attached file'}
+                </div>
+                <div className="text-[12px] text-[#475569]">
+                  {doc.fileSize ? formatFileSize(doc.fileSize) : 'Large file'} • Metadata stored
+                  locally (&gt;300KB preview omitted)
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="rounded-2xl bg-[#F6F8FC] p-4 space-y-2.5">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <FileText className="w-4 h-4 text-[#0B6B5A] shrink-0" />
                 <span className="text-[14px] font-semibold text-[#0F172A] truncate">
-                  {COMPANY.name}
+                  {company.name}
                 </span>
               </div>
               <Badge tone={doc.statusTone}>
@@ -918,6 +952,20 @@ export const Overlays: React.FC<OverlaysProps> = ({
               </Badge>
             </div>
             <p className="text-[14px] text-[#334155] leading-relaxed">{doc.previewSummary}</p>
+
+            {doc.activities && doc.activities.length > 0 && (
+              <div className="pt-2 border-t border-[#E1E5EC] space-y-1">
+                <div className="text-[12px] font-semibold text-[#475569]">Activity log</div>
+                {doc.activities.slice(0, 3).map((act) => (
+                  <div key={act.id} className="text-[12px] text-[#334155] flex justify-between gap-2">
+                    <span className="truncate">{act.text}</span>
+                    <span className="text-[#64748B] shrink-0">
+                      {formatRelativeTime(act.createdAt)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <Button
@@ -933,17 +981,26 @@ export const Overlays: React.FC<OverlaysProps> = ({
           <div className="btn-row-responsive grid grid-cols-2 gap-2.5">
             <Button
               variant="secondary"
-              onClick={() => {
-                onClose();
-                onShowToast(`Share link copied for ${doc.title}`);
-              }}
+              onClick={() =>
+                onRecordDocActivity(
+                  doc.id,
+                  'Share link copied',
+                  `Share link copied for ${doc.title}`,
+                )
+              }
             >
               <Share2 className="w-4 h-4" />
               Share Link
             </Button>
             <Button
               variant="secondary"
-              onClick={() => onOpenSheet({ type: 'upload-doc', presetTitle: doc.title })}
+              onClick={() =>
+                onOpenSheet({
+                  type: 'upload-doc',
+                  presetTitle: doc.title,
+                  presetCategory: doc.category,
+                })
+              }
             >
               <UploadCloud className="w-4 h-4" />
               Replace File
@@ -955,7 +1012,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
   }
 
   if (sheet.type === 'doc-menu') {
-    const doc = sheet.doc;
+    const doc = documents.find((item) => item.id === sheet.doc.id) ?? sheet.doc;
     return (
       <InFrameBottomSheet
         open
@@ -981,26 +1038,57 @@ export const Overlays: React.FC<OverlaysProps> = ({
           <Button
             variant="secondary"
             fullWidth
-            onClick={() => {
-              onClose();
-              onShowToast(`Share link copied for ${doc.title}`);
-            }}
+            onClick={() =>
+              onRecordDocActivity(
+                doc.id,
+                'Share link copied',
+                `Share link copied for ${doc.title}`,
+              )
+            }
           >
             Copy Share Link
           </Button>
           <Button
             variant="secondary"
             fullWidth
-            onClick={() => onOpenSheet({ type: 'upload-doc', presetTitle: doc.title })}
+            onClick={() =>
+              onOpenSheet({
+                type: 'upload-doc',
+                presetTitle: doc.title,
+                presetCategory: doc.category,
+              })
+            }
           >
             Replace Document
           </Button>
+          <button
+            type="button"
+            onClick={() => onDeleteDocument(doc)}
+            className="w-full min-h-[44px] rounded-xl bg-[#FEE2E2]/70 hover:bg-[#FEE2E2] text-[#B91C1C] text-[14px] font-semibold inline-flex items-center justify-center gap-2 cursor-pointer transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            Remove Document
+          </button>
         </div>
       </InFrameBottomSheet>
     );
   }
 
   if (sheet.type === 'send-shipper') {
+    const handleSendShipper = () => {
+      const trimmed = shipperEmail.trim();
+      if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+        setShipperError('Enter a valid recipient email address.');
+        return;
+      }
+      setShipperError('');
+      onRecordDocActivity(
+        sheet.doc.id,
+        `Sent to ${trimmed}`,
+        `Sent document to ${trimmed}`,
+      );
+    };
+
     return (
       <InFrameBottomSheet
         open
@@ -1020,19 +1108,19 @@ export const Overlays: React.FC<OverlaysProps> = ({
               id="shipper-email-input"
               type="email"
               value={shipperEmail}
-              onChange={(e) => setShipperEmail(e.target.value)}
+              onChange={(e) => {
+                setShipperEmail(e.target.value);
+                if (shipperError) setShipperError('');
+              }}
               className="w-full bg-[#F6F8FC] border border-[#CBD5E1] focus:border-[#0B6B5A] rounded-xl px-3.5 py-2.5 text-[16px] text-[#0F172A] outline-none min-h-[44px]"
             />
+            {shipperError && (
+              <p className="mt-1.5 text-[12px] font-medium text-[#DC2626]" role="alert">
+                {shipperError}
+              </p>
+            )}
           </div>
-          <Button
-            variant="primary"
-            fullWidth
-            size="lg"
-            onClick={() => {
-              onClose();
-              onShowToast(`Sent document to ${shipperEmail}`);
-            }}
-          >
+          <Button variant="primary" fullWidth size="lg" onClick={handleSendShipper}>
             <Send className="w-4 h-4" />
             Send Copy
           </Button>
@@ -1057,7 +1145,7 @@ export const Overlays: React.FC<OverlaysProps> = ({
             </div>
             <div className="flex justify-between gap-2">
               <span className="text-[#475569]">USDOT</span>
-              <span className="font-mono font-semibold text-[#0F172A]">{COMPANY.usdot}</span>
+              <span className="font-mono font-semibold text-[#0F172A]">{company.usdot}</span>
             </div>
             <div className="flex justify-between gap-2">
               <span className="text-[#475569]">Status</span>
@@ -1076,8 +1164,12 @@ export const Overlays: React.FC<OverlaysProps> = ({
             fullWidth
             size="lg"
             onClick={() => {
-              onClose();
-              onShowToast('Receipt saved to Documents');
+              onConfirmUploadDoc({
+                title: `Receipt — ${sheet.req.title} (${sheet.req.ref})`,
+                category: 'Permits',
+                previewSummary: `Payment receipt for ${sheet.req.title} (${sheet.req.receiptAmount || '$176.00 Paid'}).`,
+                fileTypeLabel: 'PDF',
+              });
             }}
           >
             <FileCheck2 className="w-4 h-4" />
@@ -1088,7 +1180,227 @@ export const Overlays: React.FC<OverlaysProps> = ({
     );
   }
 
+  if (sheet.type === 'company-edit') {
+    return (
+      <CompanyEditBody
+        key={company.usdot}
+        company={company}
+        onCancel={onClose}
+        onSave={onSaveCompany}
+      />
+    );
+  }
+
+  if (sheet.type === 'reset-demo-confirm') {
+    return (
+      <InFrameBottomSheet
+        open
+        onClose={onClose}
+        title="Reset demo data?"
+        subtitle={company.name}
+      >
+        <div className="space-y-4">
+          <p className="text-[14px] text-[#334155] leading-relaxed">
+            This clears all locally saved trucks, drivers, uploaded files, requests, reviews, and
+            messages, restoring the original Apex Hauling LLC demo dataset.
+          </p>
+          <div className="btn-row-responsive grid grid-cols-2 gap-2.5">
+            <Button variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                onClose();
+                onResetDemoData();
+              }}
+            >
+              <RotateCcw className="w-4 h-4" />
+              Reset All Data
+            </Button>
+          </div>
+        </div>
+      </InFrameBottomSheet>
+    );
+  }
+
+  if (sheet.type === 'tutorial') {
+    return (
+      <InFrameBottomSheet
+        open
+        onClose={onCloseTutorial}
+        title="REVAS Carrier Portal Guide"
+        subtitle="Quick walkthrough"
+      >
+        <div className="space-y-3 text-[14px] text-[#334155]">
+          <div className="rounded-2xl bg-[#F6F8FC] p-3.5">
+            <div className="font-semibold text-[#0F2A3F]">1. Home &amp; Compliance Alerts</div>
+            <p className="text-[13px] text-[#475569] mt-0.5">
+              Upload expiring medical cards or send one-tap reminders to drivers.
+            </p>
+          </div>
+          <div className="rounded-2xl bg-[#F6F8FC] p-3.5">
+            <div className="font-semibold text-[#0F2A3F]">2. Document Vault &amp; Requests</div>
+            <p className="text-[13px] text-[#475569] mt-0.5">
+              Upload real files, track MVRs and UCR filings, and share certificates directly with
+              shippers.
+            </p>
+          </div>
+          <div className="rounded-2xl bg-[#F6F8FC] p-3.5">
+            <div className="font-semibold text-[#0F2A3F]">3. Offline-Ready Local Storage</div>
+            <p className="text-[13px] text-[#475569] mt-0.5">
+              Every quote step, truck, driver, review, and message saves automatically across page
+              refreshes and browser tabs.
+            </p>
+          </div>
+          <Button variant="primary" fullWidth onClick={onCloseTutorial}>
+            Got it
+          </Button>
+        </div>
+      </InFrameBottomSheet>
+    );
+  }
+
   return null;
+};
+
+interface CompanyEditBodyProps {
+  company: CompanyInfo;
+  onCancel: () => void;
+  onSave: (patch: Partial<CompanyInfo>) => void;
+}
+
+const CompanyEditBody: React.FC<CompanyEditBodyProps> = ({ company, onCancel, onSave }) => {
+  const [name, setName] = useState(company.name);
+  const [usdot, setUsdot] = useState(company.usdot);
+  const [mc, setMc] = useState(company.mc);
+  const [address, setAddress] = useState(company.address);
+  const [email, setEmail] = useState(company.email);
+  const [phone, setPhone] = useState(company.phone);
+  const [error, setError] = useState('');
+
+  const handleSubmit = () => {
+    const cleanName = name.trim();
+    const cleanUsdot = usdot.replace(/\D/g, '');
+    const cleanMc = mc.trim().toUpperCase();
+    const cleanAddress = address.trim();
+    const cleanEmail = email.trim();
+    const cleanPhone = phone.trim();
+
+    if (!cleanName) {
+      setError('Company name is required.');
+      return;
+    }
+    if (cleanUsdot.length < 5 || cleanUsdot.length > 8) {
+      setError('Enter a valid 5–8 digit USDOT number.');
+      return;
+    }
+    if (!/^MC-?\d{4,7}$/.test(cleanMc)) {
+      setError('Enter MC number like MC-145290.');
+      return;
+    }
+    if (!cleanAddress) {
+      setError('Principal address is required.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setError('Enter a valid email address.');
+      return;
+    }
+    if (cleanPhone.replace(/\D/g, '').length < 10) {
+      setError('Enter a valid 10-digit phone number.');
+      return;
+    }
+
+    setError('');
+    onSave({
+      name: cleanName,
+      usdot: cleanUsdot,
+      mc: cleanMc.startsWith('MC-') ? cleanMc : `MC-${cleanMc.replace(/^MC/, '')}`,
+      address: cleanAddress,
+      email: cleanEmail,
+      phone: cleanPhone,
+    });
+  };
+
+  return (
+    <InFrameBottomSheet open onClose={onCancel} title="Edit Company Details" subtitle={company.name}>
+      <div className="space-y-3.5">
+        {error && (
+          <div className="rounded-xl bg-[#FEE2E2] px-3 py-2 text-[12px] font-medium text-[#B91C1C]" role="alert">
+            {error}
+          </div>
+        )}
+        <div>
+          <label className="block text-[13px] font-semibold text-[#0F172A] mb-1">Company name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full bg-[#F6F8FC] border border-[#CBD5E1] focus:border-[#0B6B5A] rounded-xl px-3.5 py-2.5 text-[15px] text-[#0F172A] outline-none min-h-[44px]"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          <div>
+            <label className="block text-[13px] font-semibold text-[#0F172A] mb-1">USDOT</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={usdot}
+              onChange={(e) => setUsdot(e.target.value)}
+              className="w-full bg-[#F6F8FC] border border-[#CBD5E1] focus:border-[#0B6B5A] rounded-xl px-3.5 py-2.5 font-mono text-[15px] text-[#0F172A] outline-none min-h-[44px]"
+            />
+          </div>
+          <div>
+            <label className="block text-[13px] font-semibold text-[#0F172A] mb-1">MC Number</label>
+            <input
+              type="text"
+              value={mc}
+              onChange={(e) => setMc(e.target.value)}
+              className="w-full bg-[#F6F8FC] border border-[#CBD5E1] focus:border-[#0B6B5A] rounded-xl px-3.5 py-2.5 font-mono text-[15px] text-[#0F172A] outline-none min-h-[44px]"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-[13px] font-semibold text-[#0F172A] mb-1">Principal address</label>
+          <input
+            type="text"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            className="w-full bg-[#F6F8FC] border border-[#CBD5E1] focus:border-[#0B6B5A] rounded-xl px-3.5 py-2.5 text-[15px] text-[#0F172A] outline-none min-h-[44px]"
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-2.5">
+          <div>
+            <label className="block text-[13px] font-semibold text-[#0F172A] mb-1">Dispatch email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-[#F6F8FC] border border-[#CBD5E1] focus:border-[#0B6B5A] rounded-xl px-3.5 py-2.5 text-[15px] text-[#0F172A] outline-none min-h-[44px]"
+            />
+          </div>
+          <div>
+            <label className="block text-[13px] font-semibold text-[#0F172A] mb-1">Primary phone</label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="w-full bg-[#F6F8FC] border border-[#CBD5E1] focus:border-[#0B6B5A] rounded-xl px-3.5 py-2.5 font-mono text-[15px] text-[#0F172A] outline-none min-h-[44px]"
+            />
+          </div>
+        </div>
+        <div className="pt-1 btn-row-responsive flex gap-2.5">
+          <Button variant="secondary" onClick={onCancel} className="flex-1">
+            Cancel
+          </Button>
+          <Button variant="teal" onClick={handleSubmit} className="flex-[1.5]">
+            Save Details
+          </Button>
+        </div>
+      </div>
+    </InFrameBottomSheet>
+  );
 };
 
 interface VehicleFormBodyProps {
@@ -1144,9 +1456,57 @@ const VehicleFormBody: React.FC<VehicleFormBodyProps> = ({
   const [vehRadius, setVehRadius] = useState(
     isEdit && initialVehicle ? initialVehicle.radius : '500+ mi',
   );
+  const [error, setError] = useState('');
+
+  const handleSave = () => {
+    const cleanName = vehName.trim();
+    const cleanVin = vehVin.trim().toUpperCase();
+    const numericVal = Number(vehValue.replace(/[^0-9.]/g, ''));
+
+    if (!cleanName) {
+      setError('Year, make & model is required.');
+      return;
+    }
+    if (showFleetFields && !unitNumber.trim()) {
+      setError('Unit number is required.');
+      return;
+    }
+    if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(cleanVin)) {
+      setError('VIN must be 17 alphanumeric characters (excluding I, O, Q).');
+      return;
+    }
+    if (!Number.isFinite(numericVal) || numericVal <= 0) {
+      setError('Enter a positive stated value (e.g. $158,000).');
+      return;
+    }
+
+    setError('');
+    const formattedVal = `$${Math.round(numericVal).toLocaleString('en-US')}`;
+    onSave(
+      {
+        name: cleanName,
+        vin: cleanVin,
+        operationType: vehOp,
+        cab: vehCab,
+        statedValue: formattedVal,
+        radius: vehRadius.trim() || '500+ mi',
+      },
+      initialVehicle?.id,
+      {
+        unitNumber: unitNumber.trim() || 'Unit #107',
+        status,
+      },
+    );
+  };
 
   return (
     <div className="space-y-3.5">
+      {error && (
+        <div className="rounded-xl bg-[#FEE2E2] px-3 py-2 text-[12px] font-medium text-[#B91C1C]" role="alert">
+          {error}
+        </div>
+      )}
+
       {showFleetFields && (
         <div className="grid grid-cols-2 gap-2.5">
           <div>
@@ -1202,6 +1562,7 @@ const VehicleFormBody: React.FC<VehicleFormBodyProps> = ({
         </label>
         <input
           type="text"
+          maxLength={17}
           value={vehVin}
           onChange={(e) => setVehVin(e.target.value.toUpperCase())}
           className="w-full bg-[#F6F8FC] border border-[#CBD5E1] focus:border-[#0B6B5A] rounded-xl px-3.5 py-2.5 font-mono text-[16px] font-medium text-[#0F172A] outline-none min-h-[44px]"
@@ -1279,28 +1640,7 @@ const VehicleFormBody: React.FC<VehicleFormBodyProps> = ({
         <Button variant="secondary" onClick={onCancel} className="flex-1">
           Cancel
         </Button>
-        <Button
-          variant="teal"
-          onClick={() => {
-            if (!vehName.trim() || !vehVin.trim()) return;
-            onSave(
-              {
-                name: vehName.trim(),
-                vin: vehVin.trim(),
-                operationType: vehOp,
-                cab: vehCab,
-                statedValue: vehValue.trim() || '$120,000',
-                radius: vehRadius.trim() || '500+ mi',
-              },
-              initialVehicle?.id,
-              {
-                unitNumber: unitNumber.trim() || 'Unit #107',
-                status,
-              },
-            );
-          }}
-          className="flex-[1.5]"
-        >
+        <Button variant="teal" onClick={handleSave} className="flex-[1.5]">
           {submitLabel || (isEdit ? 'Save Changes' : 'Add Vehicle')}
         </Button>
       </div>
@@ -1327,11 +1667,10 @@ interface DriverFormBodyProps {
   onRemove?: () => void;
 }
 
-const getInitials = (name: string) => {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return 'DR';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+const getInitials = (fullName: string) => {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase() || 'DR';
+  return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
 };
 
 const DriverFormBody: React.FC<DriverFormBodyProps> = ({
@@ -1350,8 +1689,10 @@ const DriverFormBody: React.FC<DriverFormBodyProps> = ({
   const [cdlState, setCdlState] = useState(
     isEdit && initialDriver ? initialDriver.cdlState : 'TX',
   );
-  const [medicalValidUntil, setMedicalValidUntil] = useState(
-    isEdit && initialDriver ? initialDriver.medicalValidUntil : 'Oct 15, 2026',
+  const [medicalDate, setMedicalDate] = useState(() =>
+    isEdit && initialDriver
+      ? initialDriver.medicalExpiryIso.slice(0, 10)
+      : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
   );
   const [assignedUnit, setAssignedUnit] = useState(
     isEdit && initialDriver ? initialDriver.assignedUnit : 'Unit #105',
@@ -1359,19 +1700,64 @@ const DriverFormBody: React.FC<DriverFormBodyProps> = ({
   const [phone, setPhone] = useState(
     isEdit && initialDriver ? initialDriver.phone : '(214) 555-0199',
   );
-  const [statusLabel, setStatusLabel] = useState(
-    isEdit && initialDriver ? initialDriver.statusLabel : 'Active',
-  );
+  const [error, setError] = useState('');
 
-  const statusTone: FleetDriver['statusTone'] =
-    statusLabel.toLowerCase().includes('expire')
-      ? 'red'
-      : statusLabel === 'Pending'
-        ? 'amber'
-        : 'green';
+  const handleSave = () => {
+    const cleanName = name.trim();
+    const cleanCdl = cdlNumber.trim();
+    const cleanState = cdlState.trim().toUpperCase();
+    const cleanPhone = phone.trim();
+
+    if (!cleanName) {
+      setError('Driver full name is required.');
+      return;
+    }
+    if (cleanCdl.length < 4) {
+      setError('Enter a valid CDL number.');
+      return;
+    }
+    if (!/^[A-Z]{2}$/.test(cleanState)) {
+      setError('Enter a 2-letter CDL issuing state (e.g. TX).');
+      return;
+    }
+    if (!medicalDate || Number.isNaN(Date.parse(`${medicalDate}T12:00:00Z`))) {
+      setError('Choose a valid medical card expiration date.');
+      return;
+    }
+    if (cleanPhone.replace(/\D/g, '').length < 10) {
+      setError('Enter a valid 10-digit driver phone number.');
+      return;
+    }
+
+    const medicalExpiryIso = new Date(`${medicalDate}T12:00:00Z`).toISOString();
+    const days = getDaysUntil(medicalExpiryIso);
+    const statusTone: FleetDriver['statusTone'] =
+      days !== null && days <= 14 ? 'red' : days !== null && days <= 30 ? 'amber' : 'green';
+
+    setError('');
+    onSave(
+      {
+        name: cleanName,
+        initials: getInitials(cleanName),
+        cdlNumber: cleanCdl,
+        cdlState: cleanState,
+        medicalExpiryIso,
+        assignedUnit: assignedUnit.trim() || 'Unassigned',
+        phone: cleanPhone,
+        statusTone,
+      },
+      initialDriver?.id,
+    );
+  };
 
   return (
     <div className="space-y-3.5">
+      {error && (
+        <div className="rounded-xl bg-[#FEE2E2] px-3 py-2 text-[12px] font-medium text-[#B91C1C]" role="alert">
+          {error}
+        </div>
+      )}
+
       <div>
         <label className="block text-[14px] font-semibold text-[#0F172A] mb-1">
           Driver name
@@ -1402,6 +1788,7 @@ const DriverFormBody: React.FC<DriverFormBodyProps> = ({
           </label>
           <input
             type="text"
+            maxLength={2}
             value={cdlState}
             onChange={(e) => setCdlState(e.target.value.toUpperCase())}
             className="w-full bg-[#F6F8FC] border border-[#CBD5E1] focus:border-[#0B6B5A] rounded-xl px-3.5 py-2.5 text-[16px] font-medium text-[#0F172A] outline-none min-h-[44px]"
@@ -1415,10 +1802,10 @@ const DriverFormBody: React.FC<DriverFormBodyProps> = ({
             Medical valid until
           </label>
           <input
-            type="text"
-            value={medicalValidUntil}
-            onChange={(e) => setMedicalValidUntil(e.target.value)}
-            className="w-full bg-[#F6F8FC] border border-[#CBD5E1] focus:border-[#0B6B5A] rounded-xl px-3.5 py-2.5 text-[16px] font-medium text-[#0F172A] outline-none min-h-[44px]"
+            type="date"
+            value={medicalDate}
+            onChange={(e) => setMedicalDate(e.target.value)}
+            className="w-full bg-[#F6F8FC] border border-[#CBD5E1] focus:border-[#0B6B5A] rounded-xl px-3 py-2.5 text-[14px] font-medium text-[#0F172A] outline-none min-h-[44px]"
           />
         </div>
         <div>
@@ -1446,53 +1833,11 @@ const DriverFormBody: React.FC<DriverFormBodyProps> = ({
         />
       </div>
 
-      <div>
-        <label className="block text-[14px] font-semibold text-[#0F172A] mb-1">
-          Status
-        </label>
-        <div className="grid grid-cols-3 gap-1.5">
-          {(['Active', 'Pending', 'Expires in 9 days'] as const).map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => setStatusLabel(opt)}
-              className={`min-h-[44px] px-2 py-2 rounded-xl text-[12px] font-semibold cursor-pointer transition-colors ${
-                statusLabel === opt
-                  ? 'bg-[#0F2A3F] text-white'
-                  : 'bg-[#EEF3FB] text-[#334155]'
-              }`}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <div className="pt-1 btn-row-responsive flex gap-2.5">
         <Button variant="secondary" onClick={onCancel} className="flex-1">
           Cancel
         </Button>
-        <Button
-          variant="teal"
-          onClick={() => {
-            if (!name.trim()) return;
-            onSave(
-              {
-                name: name.trim(),
-                initials: getInitials(name),
-                cdlNumber: cdlNumber.trim() || 'CDL-A ••••0000',
-                cdlState: cdlState.trim() || 'TX',
-                medicalValidUntil: medicalValidUntil.trim() || 'Dec 31, 2026',
-                assignedUnit: assignedUnit.trim() || 'Unassigned',
-                phone: phone.trim() || '(214) 555-0100',
-                statusLabel,
-                statusTone,
-              },
-              initialDriver?.id,
-            );
-          }}
-          className="flex-[1.5]"
-        >
+        <Button variant="teal" onClick={handleSave} className="flex-[1.5]">
           {isEdit ? 'Save Changes' : 'Add Driver'}
         </Button>
       </div>
@@ -1513,34 +1858,89 @@ const DriverFormBody: React.FC<DriverFormBodyProps> = ({
 
 interface UploadDocBodyProps {
   presetTitle?: string;
-  onConfirm: (title: string, category: VaultDocument['category'], fileName: string) => void;
+  presetCategory?: VaultDocument['category'];
+  forMvrRequestId?: string;
+  onConfirm: (payload: UploadDocumentPayload) => void;
 }
 
-const UploadDocBody: React.FC<UploadDocBodyProps> = ({ presetTitle, onConfirm }) => {
+const UploadDocBody: React.FC<UploadDocBodyProps> = ({
+  presetTitle,
+  presetCategory,
+  forMvrRequestId,
+  onConfirm,
+}) => {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadTitle, setUploadTitle] = useState(
-    presetTitle || 'MVR for Marcus Vance',
+    presetTitle || 'Driver Motor Vehicle Record (MVR)',
   );
   const [uploadCat, setUploadCat] = useState<VaultDocument['category']>(
-    presetTitle?.toLowerCase().includes('coi') || presetTitle?.toLowerCase().includes('certificate')
-      ? 'Insurance'
-      : presetTitle?.toLowerCase().includes('cab')
-        ? 'Vehicles'
-        : 'Permits',
+    presetCategory ||
+      (presetTitle?.toLowerCase().includes('certificate')
+        ? 'Insurance'
+        : presetTitle?.toLowerCase().includes('cab')
+          ? 'Vehicles'
+          : 'Permits'),
   );
-  const [selectedSampleFile, setSelectedSampleFile] = useState(
-    presetTitle?.toLowerCase().includes('medical')
-      ? 'Marcus_Vance_Medical_Card.pdf'
-      : 'Marcus_Vance_MVR_2025.pdf',
-  );
+  const [preparedFile, setPreparedFile] = useState<PreparedUploadFile | null>(null);
+  const [processingFile, setProcessingFile] = useState(false);
+  const [error, setError] = useState('');
 
-  const sampleFiles = [
-    'Marcus_Vance_MVR_2025.pdf',
-    'Marcus_Vance_Medical_Card.pdf',
-    'Unit_105_Cab_Card.pdf',
-  ];
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setProcessingFile(true);
+    setError('');
+    try {
+      const prepared = await prepareUploadedFile(file);
+      setPreparedFile(prepared);
+      if (!presetTitle && !uploadTitle.trim()) {
+        setUploadTitle(file.name.replace(/\.[^.]+$/, ''));
+      }
+    } finally {
+      setProcessingFile(false);
+    }
+  };
+
+  const handleSave = () => {
+    const cleanTitle = uploadTitle.trim();
+    if (!cleanTitle) {
+      setError('Document name is required.');
+      return;
+    }
+
+    const fileTypeLabel = preparedFile?.type.startsWith('image/')
+      ? 'Image'
+      : preparedFile?.name.toLowerCase().endsWith('.pdf') || !preparedFile
+        ? 'PDF'
+        : 'File';
+
+    const resolvesMedical = cleanTitle.toLowerCase().includes('medical');
+
+    onConfirm({
+      title: cleanTitle,
+      category: uploadCat,
+      previewSummary: preparedFile
+        ? `Uploaded ${preparedFile.name} (${formatFileSize(preparedFile.size)}) under ${uploadCat}.`
+        : `Uploaded ${cleanTitle} under ${uploadCat}.`,
+      fileTypeLabel,
+      fileName: preparedFile?.name,
+      fileType: preparedFile?.type,
+      fileSize: preparedFile?.size,
+      dataUrl: preparedFile?.dataUrl,
+      previewOmitted: preparedFile?.previewOmitted,
+      resolvesMedicalAlert: resolvesMedical,
+      mvrRequestId: forMvrRequestId,
+    });
+  };
 
   return (
     <div className="space-y-3.5">
+      {error && (
+        <div className="rounded-xl bg-[#FEE2E2] px-3 py-2 text-[12px] font-medium text-[#B91C1C]" role="alert">
+          {error}
+        </div>
+      )}
+
       <div>
         <label className="block text-[14px] font-semibold text-[#0F172A] mb-1">
           Document name
@@ -1548,7 +1948,10 @@ const UploadDocBody: React.FC<UploadDocBodyProps> = ({ presetTitle, onConfirm })
         <input
           type="text"
           value={uploadTitle}
-          onChange={(e) => setUploadTitle(e.target.value)}
+          onChange={(e) => {
+            setUploadTitle(e.target.value);
+            if (error) setError('');
+          }}
           className="w-full bg-[#F6F8FC] border border-[#CBD5E1] focus:border-[#0B6B5A] rounded-xl px-3.5 py-2.5 text-[16px] font-medium text-[#0F172A] outline-none min-h-[44px]"
         />
       </div>
@@ -1575,37 +1978,53 @@ const UploadDocBody: React.FC<UploadDocBodyProps> = ({ presetTitle, onConfirm })
 
       <div>
         <label className="block text-[14px] font-semibold text-[#0F172A] mb-1.5">
-          Choose file
+          Attach file
         </label>
-        <div className="rounded-2xl bg-[#F6F8FC] p-3 space-y-2">
-          {sampleFiles.map((file) => {
-            const chosen = selectedSampleFile === file;
-            return (
-              <button
-                key={file}
-                type="button"
-                onClick={() => setSelectedSampleFile(file)}
-                className={`w-full min-h-[44px] text-left rounded-xl px-3 py-2 flex items-center justify-between gap-2 text-[13px] font-mono cursor-pointer transition-colors ${
-                  chosen
-                    ? 'bg-[#D9F2EA] text-[#0B6B5A] font-semibold'
-                    : 'bg-white text-[#334155]'
-                }`}
-              >
-                <span className="truncate">{file}</span>
-                {chosen && <CheckCircle2 className="w-4 h-4 shrink-0" />}
-              </button>
-            );
-          })}
-        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,.pdf,.doc,.docx,.txt"
+          onChange={handleFileChange}
+          aria-label="Upload document file"
+          className="sr-only"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="w-full min-h-[60px] rounded-2xl border border-dashed border-[#0B6B5A] bg-[#F6F8FC] hover:bg-[#D9F2EA]/40 px-4 py-3 flex items-center justify-between gap-3 text-left cursor-pointer transition-colors"
+        >
+          <div className="min-w-0">
+            <div className="text-[14px] font-semibold text-[#0F2A3F] truncate">
+              {processingFile
+                ? 'Preparing file...'
+                : preparedFile
+                  ? preparedFile.name
+                  : 'Choose PDF or photo from device'}
+            </div>
+            <div className="text-[12px] text-[#475569] mt-0.5">
+              {preparedFile
+                ? `${formatFileSize(preparedFile.size)} • ${
+                    preparedFile.previewOmitted
+                      ? 'Metadata only (>300KB)'
+                      : 'Saved inline for preview'
+                  }`
+                : 'Images resized cleanly under 300KB; larger files keep metadata'}
+            </div>
+          </div>
+          {preparedFile ? (
+            <CheckCircle2 className="w-5 h-5 text-[#0B6B5A] shrink-0" />
+          ) : (
+            <UploadCloud className="w-5 h-5 text-[#0B6B5A] shrink-0" />
+          )}
+        </button>
       </div>
 
       <Button
         variant="teal"
         fullWidth
         size="lg"
-        onClick={() =>
-          onConfirm(uploadTitle.trim() || selectedSampleFile, uploadCat, selectedSampleFile)
-        }
+        disabled={processingFile}
+        onClick={handleSave}
       >
         <UploadCloud className="w-4 h-4" />
         Save Document
@@ -1620,6 +2039,17 @@ const WriteReviewBody: React.FC<{
 }> = ({ onCancel, onSubmit }) => {
   const [rating, setRating] = useState(5);
   const [text, setText] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = () => {
+    const trimmed = text.trim();
+    if (trimmed.length < 3) {
+      setError('Please write a short review before submitting.');
+      return;
+    }
+    setError('');
+    onSubmit(rating, trimmed);
+  };
 
   return (
     <div className="space-y-4">
@@ -1661,12 +2091,20 @@ const WriteReviewBody: React.FC<{
         <textarea
           id="carrier-review-text"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (error) setError('');
+          }}
           placeholder="Share your experience with quotes, filings, or advisor support..."
           rows={4}
           className="w-full min-h-[96px] rounded-[12px] px-3.5 py-2.5 text-[16px] text-[#0F2A3F] placeholder:text-[#94A3B8] bg-white focus:outline-none focus:ring-2 focus:ring-[#0B6B5A]/30 resize-none"
-          style={{ border: '0.5px solid #CBD5E1' }}
+          style={{ border: error ? '1px solid #DC2626' : '0.5px solid #CBD5E1' }}
         />
+        {error && (
+          <p className="mt-1 text-[12px] font-medium text-[#DC2626]" role="alert">
+            {error}
+          </p>
+        )}
       </div>
 
       <div className="flex items-center gap-2.5 pt-1">
@@ -1679,7 +2117,7 @@ const WriteReviewBody: React.FC<{
         </button>
         <button
           type="button"
-          onClick={() => onSubmit(rating, text)}
+          onClick={handleSubmit}
           className="flex-1 h-[44px] rounded-[12px] bg-[#0F2A3F] hover:bg-[#163854] text-white text-[14px] font-medium transition-colors cursor-pointer"
         >
           Submit

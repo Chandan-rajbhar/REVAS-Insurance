@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   ArrowRight,
   ClipboardCheck,
@@ -9,7 +9,8 @@ import {
   Search,
   ShieldCheck,
 } from 'lucide-react';
-import { SERVICES, type ServiceItem } from '../data/mock';
+import { SERVICES, type ServiceItem, type UiState } from '../data/mock';
+import { useScrollPersistence } from '../hooks';
 import { Button, EmptyState, SectionHeader } from '../components/ui';
 
 type ServiceFilter = 'All' | ServiceItem['filterGroup'];
@@ -69,18 +70,25 @@ const DEFAULT_ICON_STYLE = {
 };
 
 interface ServicesScreenProps {
+  search: string;
+  onSearchChange: (value: string) => void;
+  activeFilter: UiState['servicesFilter'];
+  onFilterChange: (filter: UiState['servicesFilter']) => void;
   onInspectService: (service: ServiceItem) => void;
   onSelectService: (service: ServiceItem) => void;
   onFileUcrNow: () => void;
 }
 
 export const ServicesScreen: React.FC<ServicesScreenProps> = ({
+  search,
+  onSearchChange,
+  activeFilter,
+  onFilterChange,
   onInspectService,
   onSelectService,
   onFileUcrNow,
 }) => {
-  const [search, setSearch] = useState('');
-  const [activeFilter, setActiveFilter] = useState<ServiceFilter>('All');
+  const { scrollRef, onScroll } = useScrollPersistence('services');
 
   const filteredServices = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -96,7 +104,11 @@ export const ServicesScreen: React.FC<ServicesScreenProps> = ({
   }, [search, activeFilter]);
 
   return (
-    <div className="flex-1 min-h-0 scroll-area screen-enter py-4 overflow-x-hidden">
+    <div
+      ref={scrollRef}
+      onScroll={onScroll}
+      className="flex-1 min-h-0 scroll-area screen-enter py-4 overflow-x-hidden"
+    >
       {/* Search Bar */}
       <div className="px-4">
         <div className="w-full min-h-[46px] bg-white rounded-2xl px-3.5 flex items-center gap-2.5 shadow-[0_1px_4px_rgba(15,23,42,0.05)] focus-within:ring-2 focus-within:ring-[#0B6B5A]">
@@ -104,7 +116,7 @@ export const ServicesScreen: React.FC<ServicesScreenProps> = ({
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search filings, permits, safety..."
             aria-label="Search DOT services"
             className="flex-1 min-w-0 bg-transparent text-[16px] text-[#0F172A] placeholder:text-[#64748B] outline-none py-2"
@@ -112,7 +124,7 @@ export const ServicesScreen: React.FC<ServicesScreenProps> = ({
           {search && (
             <button
               type="button"
-              onClick={() => setSearch('')}
+              onClick={() => onSearchChange('')}
               className="min-h-[44px] px-2 text-[14px] font-semibold text-[#475569] hover:text-[#0F172A] cursor-pointer"
             >
               Clear
@@ -129,7 +141,7 @@ export const ServicesScreen: React.FC<ServicesScreenProps> = ({
             <button
               key={chip}
               type="button"
-              onClick={() => setActiveFilter(chip)}
+              onClick={() => onFilterChange(chip)}
               aria-pressed={active}
               className={`shrink-0 min-h-[44px] px-4 rounded-full text-[14px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                 active
@@ -177,8 +189,8 @@ export const ServicesScreen: React.FC<ServicesScreenProps> = ({
             description="Try a different search term or reset your filter."
             actionLabel="Show all services"
             onAction={() => {
-              setSearch('');
-              setActiveFilter('All');
+              onSearchChange('');
+              onFilterChange('All');
             }}
           />
         </div>
